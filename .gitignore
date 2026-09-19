@@ -1,0 +1,6 @@
+sim/obj_*/
+sim/work/
+sim/transcript
+*.wlf
+*.vcd
+*.fst
