@@ -36,7 +36,8 @@ class uart_rx_driver extends uvm_driver #(uart_rx_item);
       vif.rx_drv_cb.rxd <= 1'b0;
       repeat (CLKS_PER_BIT/4) @(vif.rx_drv_cb);
       vif.rx_drv_cb.rxd <= 1'b1;
-      repeat (CLKS_PER_BIT/4) @(vif.rx_drv_cb);
+      // el hueco debe cubrir el muestreo de mitad de bit (CLKS/2 + latencia del sincronizador)
+      repeat (CLKS_PER_BIT/2 + 3) @(vif.rx_drv_cb);
     end
 
     // Start bit

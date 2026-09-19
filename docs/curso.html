@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>De la electricidad al verificador profesional: UART</title>
+<style>
+:root {
+  --bg: #0a0e17;
+  --surface: rgba(18, 25, 45, 0.72);
+  --surface2: rgba(28, 38, 65, 0.6);
+  --cyan: #00e5ff;
+  --magenta: #ff2bd6;
+  --lime: #b4ff00;
+  --gold: #ffb300;
+  --red: #ff3b3b;
+  --text: #e6edf7;
+  --muted: #94a3c0;
+  --border: rgba(0, 229, 255, 0.22);
+  --shadow: 0 8px 32px rgba(0,0,0,0.45);
+  --radius: 18px;
+  --sidebar-width: 280px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: radial-gradient(circle at 20% 20%, #0f1a30 0%, var(--bg) 70%);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+a { color: var(--cyan); text-decoration: none; }
+a:hover, a:focus-visible { text-decoration: underline; }
+button { font-family: inherit; cursor: pointer; }
+input, select, button { border-radius: 8px; }
+
+.progress-fixed {
+  position: fixed; top: 0; left: 0; height: 4px; width: 0%;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta), var(--lime));
+  z-index: 1000; transition: width 0.1s linear;
+}
+.app { display: flex; gap: 0; }
+.sidebar {
+  width: var(--sidebar-width); min-width: var(--sidebar-width);
+  height: 100vh; position: sticky; top: 0;
+  padding: 1.5rem 1rem;
+  background: rgba(8, 12, 22, 0.85);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  z-index: 500;
+}
+.sidebar h2 {
+  font-size: 1rem; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--cyan); margin-bottom: 1rem;
+  text-shadow: 0 0 10px rgba(0,229,255,0.5);
+}
+.sidebar nav ul { list-style: none; }
+.sidebar nav li { margin-bottom: 0.5rem; }
+.sidebar nav a {
+  display: block; padding: 0.5rem 0.75rem; border-radius: 10px;
+  color: var(--muted); transition: all 0.2s; font-size: 0.9rem;
+  border-left: 3px solid transparent;
+}
+.sidebar nav a:hover, .sidebar nav a.active {
+  background: var(--surface); color: var(--text);
+  border-left-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,255,0.2);
+}
+.sidebar .level-tag {
+  display: inline-block; font-size: 0.65rem; padding: 0.2rem 0.4rem;
+  border-radius: 4px; margin-left: 0.3rem; vertical-align: middle;
+}
+.tag-basico { background: #1e3a5f; color: #9ecbff; }
+.tag-intermedio { background: #3a2f1e; color: #ffd28e; }
+.tag-avanzado { background: #2e1e3a; color: #e9b3ff; }
+.tag-experto { background: #3a1e2e; color: #ff9ecb; }
+
+.content {
+  flex: 1; min-width: 0; padding: 2rem 2rem 4rem;
+  max-width: 1100px; margin: 0 auto;
+}
+header.hero {
+  text-align: center; margin-bottom: 3rem; padding: 2rem 0;
+}
+header.hero h1 {
+  font-size: clamp(1.8rem, 5vw, 3.2rem);
+  background: linear-gradient(135deg, var(--cyan), var(--magenta));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 20px rgba(0,229,255,0.4));
+}
+header.hero p { color: var(--muted); margin-top: 0.5rem; }
+section.level {
+  margin-bottom: 3.5rem; padding: 1.8rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  backdrop-filter: blur(8px); scroll-margin-top: 40px;
+  position: relative; overflow: hidden;
+}
+section.level::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), transparent);
+  opacity: 0.7;
+}
+section.level h2 {
+  font-size: 1.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.7rem;
+}
+section.level h2 .num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.2rem; height: 2.2rem; border-radius: 50%;
+  background: linear-gradient(135deg, var(--cyan), #0077ff);
+  font-size: 1.1rem; color: #000; box-shadow: 0 0 14px rgba(0,229,255,0.6);
+}
+section.level h3 { margin-top: 1.4rem; margin-bottom: 0.5rem; color: var(--cyan); }
+section.level p, section.level li { color: var(--text); }
+.card-row { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.card {
+  flex: 1 1 220px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.card h4 { color: var(--magenta); margin-bottom: 0.5rem; }
+.kbd { background: #1e2a44; padding: 0.1rem 0.5rem; border-radius: 4px; font-family: monospace; color: var(--lime); }
+code.inline { background: #1e2a44; padding: 0.1rem 0.4rem; border-radius: 4px; color: var(--lime); font-family: 'Courier New', monospace; }
+pre {
+  background: #0d1424; border: 1px solid #2a3a5a; border-radius: 12px;
+  padding: 1rem; overflow-x: auto; margin: 1rem 0;
+  font-family: 'Courier New', monospace; font-size: 0.85rem;
+  line-height: 1.45;
+}
+code .kw { color: var(--magenta); }
+code .cm { color: #6b7a99; font-style: italic; }
+code .str { color: var(--lime); }
+code .num { color: var(--gold); }
+code .sig { color: var(--cyan); }
+.wire-demo { position: relative; height: 80px; background: #0b1120; border-radius: 12px; margin: 1rem 0; overflow: hidden; border: 1px solid #2a3a5a; }
+.wire-demo .line { position: absolute; top: 40px; left: 0; right: 0; height: 2px; background: #3a4a6a; }
+.wire-demo .pulse {
+  position: absolute; top: 35px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--lime); box-shadow: 0 0 12px var(--lime);
+  animation: travel 3s linear infinite;
+}
+@keyframes travel { 0% { left: 0; } 100% { left: calc(100% - 12px); } }
+@media (prefers-reduced-motion: reduce) {
+  .wire-demo .pulse { animation: none; left: 50%; }
+  * { scroll-behavior: auto; }
+}
+.calc-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+.calc-box { flex: 1 1 240px; }
+.calc-box label { display: block; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.3rem; }
+.calc-box input[type=range] { width: 100%; accent-color: var(--cyan); }
+.calc-output { font-size: 1.2rem; font-weight: 600; color: var(--lime); margin-top: 0.5rem; }
+.sim-controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0; }
+.sim-controls label { display: flex; align-items: center; gap: 0.3rem; color: var(--muted); }
+.sim-controls input[type=text], .sim-controls select {
+  background: #0d1424; border: 1px solid #2a3a5a; color: var(--text); padding: 0.4rem 0.6rem; border-radius: 8px;
+}
+.btn {
+  background: linear-gradient(135deg, #004466, #003355); color: var(--text);
+  border: 1px solid var(--cyan); padding: 0.45rem 1rem; border-radius: 8px;
+  font-weight: 600; transition: all 0.2s;
+}
+.btn:hover, .btn:focus-visible { box-shadow: 0 0 16px rgba(0,229,255,0.5); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn.play { border-color: var(--lime); background: linear-gradient(135deg, #1e3a00, #2a4d00); }
+.btn.step { border-color: var(--gold); }
+.waveform-container { background: #060a14; border-radius: 12px; border: 1px solid #2a3a5a; padding: 0.5rem; overflow-x: auto; }
+.waveform-container svg { display: block; min-width: 400px; }
+.state-display { display: flex; flex-wrap: wrap; gap: 0.8rem; margin: 1rem 0; }
+.state-chip { background: #0d1424; border: 1px solid #2a3a5a; border-radius: 8px; padding: 0.4rem 0.8rem; font-family: monospace; font-size: 0.8rem; color: var(--lime); }
+.arch-svg { width: 100%; height: auto; cursor: default; }
+.arch-svg rect { transition: filter 0.2s; }
+.arch-svg rect.clickable { cursor: pointer; }
+.arch-svg rect.clickable:hover, .arch-svg rect.clickable:focus-visible { filter: brightness(1.4); }
+.arch-info { min-height: 3rem; background: #0d1424; border: 1px solid #2a3a5a; border-radius: 8px; padding: 0.7rem; margin-top: 0.5rem; color: var(--muted); }
+.quiz-box { background: #0d1424; border: 1px solid #2a3a5a; border-radius: 12px; padding: 1rem; margin-top: 1.5rem; }
+.quiz-question { margin-bottom: 1rem; }
+.quiz-options { display: flex; flex-direction: column; gap: 0.5rem; }
+.quiz-option { background: #0f1a30; border: 1px solid #2a3a5a; color: var(--text); padding: 0.6rem; border-radius: 8px; text-align: left; transition: all 0.2s; }
+.quiz-option:hover, .quiz-option:focus-visible { border-color: var(--cyan); background: #12233d; }
+.quiz-option.correct { border-color: var(--lime); background: #1e3a0a; }
+.quiz-option.incorrect { border-color: var(--red); background: #3a0a0a; }
+.quiz-feedback { margin-top: 0.5rem; font-weight: 600; }
+.coverage-game { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+.coverage-bins { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.coverage-bin { background: #0f1a30; border: 1px solid #2a3a5a; padding: 0.3rem 0.6rem; border-radius: 6px; font-family: monospace; font-size: 0.75rem; color: var(--muted); }
+.coverage-bin.hit { background: #1e3a0a; border-color: var(--lime); color: var(--lime); }
+.sweep-chart { display: flex; align-items: flex-end; gap: 2px; height: 100px; margin: 1rem 0; }
+.sweep-bar { flex: 1; min-width: 6px; border-radius: 2px 2px 0 0; }
+.sweep-bar.pass { background: var(--lime); }
+.sweep-bar.fail { background: var(--red); }
+@media (max-width: 800px) {
+  .app { flex-direction: column; }
+  .sidebar { width: 100%; min-width: 0; height: auto; position: relative; border-right: none; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.7rem; }
+  .sidebar h2 { display: none; }
+  .sidebar nav ul { display: flex; flex-wrap: nowrap; gap: 0.3rem; }
+  .sidebar nav li { margin: 0; white-space: nowrap; }
+  .sidebar nav a { padding: 0.4rem 0.6rem; font-size: 0.8rem; border-left: none; border-bottom: 2px solid transparent; }
+  .sidebar nav a.active { border-bottom-color: var(--cyan); }
+  .content { padding: 1rem 0.8rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: 0.01ms !important; } }
+</style>
+<style id="iv-interview-css">
+.iv-interview { margin-top: 1rem; }
+.iv-toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; }
+.iv-filter-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.iv-chip {
+  background: #0f1a30; border: 1px solid #2a3a5a; color: var(--muted);
+  padding: 0.45rem 0.9rem; border-radius: 999px; font-size: 0.85rem; min-height: 44px;
+  transition: all 0.2s; cursor: pointer; touch-action: manipulation;
+}
+.iv-chip:hover, .iv-chip:focus-visible { border-color: var(--cyan); color: var(--text); }
+.iv-chip[aria-pressed="true"] {
+  background: linear-gradient(135deg, #004466, #003355); border-color: var(--cyan); color: var(--text);
+  box-shadow: 0 0 12px rgba(0,229,255,0.4);
+}
+.iv-search {
+  flex: 1 1 220px; min-width: 0; background: #0d1424; border: 1px solid #2a3a5a; color: var(--text);
+  padding: 0.75rem 1rem; border-radius: 8px; font-size: 16px; min-height: 44px; touch-action: manipulation;
+}
+.iv-search:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.iv-progress { margin: 1rem 0 1.5rem; }
+.iv-progress-label { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.4rem; }
+.iv-progress-track { background: #0d1424; border-radius: 999px; height: 14px; overflow: hidden; border: 1px solid #2a3a5a; }
+.iv-progress-fill {
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  height: 100%; width: 0%; transition: width 0.3s ease;
+}
+.iv-flashcards { display: flex; flex-direction: column; gap: 1rem; }
+.iv-card {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+}
+.iv-card-header {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1rem;
+  background: rgba(0,0,0,0.15); flex-wrap: wrap;
+}
+.iv-card-cat { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--cyan); }
+.iv-card-lvl { font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.iv-lvl-1 { background: #1e3a5f; color: #9ecbff; }
+.iv-lvl-2 { background: #3a2f1e; color: #ffd28e; }
+.iv-lvl-3 { background: #3a1e2e; color: #ff9ecb; }
+.iv-card-question { padding: 1rem; font-weight: 600; }
+.iv-card-question p { margin: 0; }
+.iv-card-answer { padding: 1rem; border-top: 1px solid var(--border); background: rgba(0,0,0,0.1); }
+.iv-card-answer pre { margin: 0.5rem 0 0; }
+.iv-card-footer {
+  display: flex; gap: 0.5rem; padding: 0.7rem 1rem; border-top: 1px solid var(--border); flex-wrap: wrap;
+}
+.iv-btn, .iv-btn-known, .iv-btn-repair, .iv-simula-actions .btn {
+  min-height: 44px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text); padding: 0.45rem 0.9rem; cursor: pointer;
+  touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center;
+}
+.iv-btn:hover, .iv-btn-known:hover, .iv-btn-repair:hover, .iv-simula-actions .btn:hover {
+  border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,229,255,0.3);
+}
+.iv-btn-known { border-color: var(--lime); }
+.iv-btn-repair { border-color: var(--gold); }
+.iv-btn:disabled, .iv-btn-known:disabled, .iv-btn-repair:disabled { opacity: 0.5; cursor: not-allowed; }
+.iv-simula { margin: 1.5rem 0; }
+.iv-simula-panel {
+  background: #0d1424; border: 1px solid var(--border); border-radius: 14px; padding: 1rem; margin-top: 0.5rem;
+}
+.iv-simula-question { font-weight: 600; }
+.iv-simula-timer { font-family: monospace; color: var(--lime); font-size: 1.5rem; margin: 0.5rem 0; }
+.iv-simula-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.iv-simula-answer { margin-top: 0.8rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+.iv-simula-answer pre { margin: 0.5rem 0 0; }
+.iv-checklist-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.iv-checklist-item {
+  display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.6rem;
+  border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,0.1);
+}
+.iv-checklist-item input[type="checkbox"] {
+  margin-top: 0.2rem; width: 20px; height: 20px; flex: 0 0 20px; cursor: pointer; touch-action: manipulation;
+}
+.iv-checklist-item label { flex: 1; min-width: 0; }
+.iv-checklist-item .iv-checklist-desc { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.15rem; }
+.iv-checklist-item.checked { border-color: var(--lime); background: rgba(30,58,10,0.4); }
+@media (max-width: 800px) {
+  .iv-toolbar { flex-direction: column; align-items: stretch; }
+  .iv-filter-group { justify-content: center; }
+  .iv-search { width: 100%; }
+  .iv-card-header { flex-direction: column; align-items: flex-start; }
+  .iv-card-footer, .iv-simula-actions { justify-content: center; }
+  .iv-btn, .iv-btn-known, .iv-btn-repair, .iv-simula-actions .btn { width: 100%; }
+}
+</style>
+<style id="mobile-layer">
+/* ===== Capa móvil (drawer, toques, desbordes) ===== */
+html{-webkit-text-size-adjust:100%}
+#mobileTopbar,#mobileBackdrop{display:none}
+@media (max-width:899px){
+  html{scroll-padding-top:calc(4rem + env(safe-area-inset-top))}
+  html,body{max-width:100%;overflow-x:hidden}
+  body.nav-open{overflow:hidden}
+  .app{display:block;min-width:0}
+  .content{min-width:0;max-width:100%;padding:calc(64px + env(safe-area-inset-top)) max(1rem,env(safe-area-inset-right)) calc(3rem + env(safe-area-inset-bottom)) max(1rem,env(safe-area-inset-left))}
+  .sidebar{display:block;position:fixed;top:0;left:0;width:min(86vw,320px);min-width:0;height:100vh;height:100dvh;max-height:100dvh;
+    padding:calc(1rem + env(safe-area-inset-top)) .75rem calc(1rem + env(safe-area-inset-bottom));background:rgba(8,12,22,.98);
+    backdrop-filter:none;-webkit-backdrop-filter:none;border-right:1px solid var(--border);border-bottom:0;overflow-x:hidden;overflow-y:auto;
+    overscroll-behavior:contain;-webkit-overflow-scrolling:touch;z-index:1001;transform:translateX(-100%);visibility:hidden;
+    transition:transform .25s ease,visibility 0s linear .25s;box-shadow:none}
+  .sidebar.open{transform:translateX(0);visibility:visible;transition:transform .25s ease}
+  .sidebar h2{display:block}
+  .sidebar nav ul{display:block;gap:0}
+  .sidebar nav li{margin-bottom:.5rem;white-space:normal}
+  .sidebar nav a{display:flex;align-items:center;min-height:44px;padding:.8rem .85rem;font-size:.95rem;white-space:normal;border-left:3px solid transparent;border-bottom:0;touch-action:manipulation}
+  .sidebar nav a.active{border-bottom:0;border-left-color:var(--cyan)}
+  #mobileTopbar{display:flex;align-items:center;gap:.5rem;position:fixed;top:0;left:0;right:0;height:calc(56px + env(safe-area-inset-top));
+    padding:env(safe-area-inset-top) .6rem 4px;background:rgba(8,12,22,.95);border-bottom:1px solid var(--border);z-index:1000}
+  #mobileMenuBtn{flex:0 0 48px;width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border);border-radius:12px;color:var(--text);touch-action:manipulation;cursor:pointer}
+  #mobileMenuBtnIcon{display:flex;flex-direction:column;gap:5px;width:22px}
+  #mobileMenuBtnIcon span{display:block;height:2px;width:100%;background:var(--cyan);border-radius:2px;transition:transform .2s ease,opacity .2s ease}
+  body.nav-open #mobileMenuBtnIcon span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+  body.nav-open #mobileMenuBtnIcon span:nth-child(2){opacity:0}
+  body.nav-open #mobileMenuBtnIcon span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+  #mobileTopbarTitle{font-size:1.05rem;color:var(--text);text-decoration:none;white-space:nowrap;font-weight:800}
+  #mobileBackdrop{display:block;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.55);opacity:0;visibility:hidden;transition:opacity .2s ease,visibility 0s linear .2s}
+  #mobileBackdrop.show{opacity:1;visibility:visible;transition:opacity .2s ease}
+  #progressBar{z-index:1002}
+  header.hero h1{font-size:clamp(1.7rem,7vw,2.4rem)}
+  section.level{padding:1rem;margin-bottom:2rem;content-visibility:auto;contain-intrinsic-size:1px 600px}
+  section.level h2{font-size:clamp(1.3rem,5vw,1.8rem)}
+  h1,h2,h3,h4,section.level,.card{scroll-margin-top:calc(64px + env(safe-area-inset-top))}
+  p,li,.card,.quiz-question,.quiz-feedback{overflow-wrap:anywhere}
+  code{overflow-wrap:anywhere}
+  .card-row,.calc-grid,.sim-controls{display:flex;flex-wrap:wrap;gap:.75rem;min-width:0}
+  .card-row .card,.calc-grid>*{flex:1 1 100%;min-width:0}
+  .sim-controls label{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;width:100%}
+  .sim-controls input[type=text]{width:100%;min-width:0}
+  .sim-controls select{max-width:100%}
+  .sim-controls .btn{flex:1 1 auto}
+  pre,.waveform-container,.sweep-chart{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  pre code{white-space:pre;overflow-wrap:normal}
+  .waveform-container svg{display:block;max-width:none;height:auto}
+  .arch-svg{display:block;max-width:100%;height:auto}
+  .quiz-box{max-height:60vh;overflow-y:auto;overscroll-behavior:contain}
+  .btn,.quiz-option,button,input[type=text],select{min-height:44px;touch-action:manipulation}
+  .btn{display:inline-flex;align-items:center;justify-content:center}
+  input,select{font-size:16px}
+  input[type=range]{min-height:44px;touch-action:manipulation}
+  input[type=checkbox]{width:20px;height:20px}
+}
+@media (max-width:899px) and (hover:none){
+  .btn:hover,.btn:focus-visible{box-shadow:none;transform:none}
+  .sidebar nav a:hover{background:transparent}
+}
+@media (max-width:899px) and (prefers-reduced-motion:reduce){
+  .sidebar,#mobileBackdrop,#mobileMenuBtnIcon span{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="mobile-topbar" id="mobileTopbar">
+  <button type="button" id="mobileMenuBtn" aria-label="Abrir navegación del curso" aria-expanded="false" aria-controls="courseSidebar">
+    <span id="mobileMenuBtnIcon" aria-hidden="true"><span></span><span></span><span></span></span>
+  </button>
+  <span id="mobileTopbarTitle">⚡ UART · curso</span>
+</div>
+<div id="mobileBackdrop" aria-hidden="true"></div>
+<div class="progress-fixed" id="progressBar" aria-hidden="true"></div>
+<div class="app">
+  <aside class="sidebar" id="courseSidebar" aria-label="Navegación del curso">
+    <h2>UART Pro</h2>
+    <nav>
+      <ul id="navList">
+        <li><a href="#nivel-0">0 Electricidad básica <span class="level-tag tag-basico">Básico</span></a></li>
+        <li><a href="#nivel-1">1 Comunicación serie <span class="level-tag tag-basico">Básico</span></a></li>
+        <li><a href="#nivel-2">2 Lógica secuencial <span class="level-tag tag-intermedio">Intermedio</span></a></li>
+        <li><a href="#nivel-3">3 Trama UART 8N1 <span class="level-tag tag-intermedio">Intermedio</span></a></li>
+        <li><a href="#nivel-4">4 Verificación con UVM <span class="level-tag tag-avanzado">Avanzado</span></a></li>
+        <li><a href="#nivel-5">5 Cobertura y aserciones <span class="level-tag tag-avanzado">Avanzado</span></a></li>
+        <li><a href="#nivel-6">6 Nivel empresa <span class="level-tag tag-experto">Experto</span></a></li>
+    <li><a href="#nivel-7">7 Entrevista: preguntas difíciles y corner cases <span class="level-tag tag-experto">Experto</span></a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="hero">
+      <h1>De la electricidad al verificador profesional: UART</h1>
+      <p>Curso interactivo completo — desde Ohm hasta UVM, cobertura y tolerancia de baudrate.</p>
+    </header>
+
+    <!-- NIVEL 0 -->
+    <section class="level" id="nivel-0" data-level="0">
+      <h2><span class="num">0</span> Electricidad básica <span class="level-tag tag-basico">Básico</span></h2>
+      <p>Todo sistema digital se basa en voltaje, corriente y resistencia. Comprender la Ley de Ohm es el primer paso para entender por qué un UART transmite niveles de tensión.</p>
+      <div class="card">
+        <h4>Conceptos clave</h4>
+        <p><strong>Voltaje (V)</strong> – diferencia de potencial eléctrico.<br>
+        <strong>Corriente (I)</strong> – flujo de carga por unidad de tiempo.<br>
+        <strong>Resistencia (R)</strong> – oposición al flujo de corriente.<br>
+        <strong>Ley de Ohm:</strong> <code class="inline">V = I × R</code><br>
+        <strong>Divisor de tensión:</strong> <code class="inline">Vout = Vin × R2 / (R1 + R2)</code></p>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-box">
+          <label for="ohmV">Voltaje (V): <span id="ohmVval">5</span> V</label>
+          <input type="range" id="ohmV" min="1" max="12" value="5" step="0.1">
+          <label for="ohmR">Resistencia (Ω): <span id="ohmRval">1000</span> Ω</label>
+          <input type="range" id="ohmR" min="100" max="10000" value="1000" step="10">
+          <div class="calc-output" id="ohmResult">Corriente: 5.00 mA</div>
+        </div>
+        <div class="calc-box">
+          <label for="divVin">Vin divisor (V): <span id="divVinval">3.3</span> V</label>
+          <input type="range" id="divVin" min="1" max="5" value="3.3" step="0.1">
+          <label for="divR1">R1 (Ω): <span id="divR1val">1000</span> Ω</label>
+          <input type="range" id="divR1" min="100" max="10000" value="1000" step="10">
+          <label for="divR2">R2 (Ω): <span id="divR2val">2000</span> Ω</label>
+          <input type="range" id="divR2" min="100" max="10000" value="2000" step="10">
+          <div class="calc-output" id="divResult">Vout: 2.20 V</div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Niveles lógicos y level shifting</h4>
+        <p>Los microcontroladores usan niveles como 3.3V, 5V o 1.8V para representar <code class="inline">0</code> y <code class="inline">1</code>. Conectar dos sistemas con voltajes diferentes requiere adaptar niveles. Un divisor resistivo es la técnica más sencilla para bajar de 5V a 3.3V.</p>
+        <p>Ejemplo: 5V <span aria-hidden="true">→</span> divisor 1k/2k <span aria-hidden="true">→</span> 3.3V.</p>
+      </div>
+      <div class="quiz-box" id="quiz-0">
+        <h3>Quiz nivel 0</h3>
+        <div class="quiz-question" data-question="0">
+          <p>1. Si V=10V y R=2kΩ, ¿cuál es la corriente?</p>
+          <div class="quiz-options">
+            <button class="quiz-option" data-correct="true">5 mA</button>
+            <button class="quiz-option">20 mA</button>
+            <button class="quiz-option">0.2 mA</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question" data-question="0">
+          <p>2. Un divisor de tensión con R1=1kΩ, R2=2kΩ y Vin=5V produce Vout:</p>
+          <div class="quiz-options">
+            <button class="quiz-option">2.5 V</button>
+            <button class="quiz-option" data-correct="true">3.33 V</button>
+            <button class="quiz-option">1.67 V</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- NIVEL 1 -->
+    <section class="level" id="nivel-1" data-level="1">
+      <h2><span class="num">1</span> Comunicación serie <span class="level-tag tag-basico">Básico</span></h2>
+      <p>Una comunicación serie envía los bits uno tras otro por un solo cable de datos. Es más lenta que la paralela, pero usa menos pines y funciona bien a largas distancias.</p>
+      <div class="wire-demo" aria-label="Demostración de pulso viajando por un cable serie">
+        <div class="line"></div>
+        <div class="pulse"></div>
+      </div>
+      <div class="card-row">
+        <div class="card">
+          <h4>Serie vs paralelo</h4>
+          <p>Serie: 1 cable de datos, <em>1 bit a la vez</em>.<br>Paralelo: 8+ cables, <em>8 bits simultáneos</em>.</p>
+        </div>
+        <div class="card">
+          <h4>Conceptos UART</h4>
+          <p><strong>Idle (reposo):</strong> línea alta <code class="inline">1</code>.<br>
+          <strong>Baudrate:</strong> bits por segundo (p. ej. 9600).<br>
+          <strong>RS-232</strong> usa voltajes ±12V, <strong>UART TTL</strong> usa 3.3V/5V.</p>
+        </div>
+        <div class="card">
+          <h4>Ruido y masa común</h4>
+          <p>Una masa común es esencial. Sin ella, los niveles de referencia difieren y la comunicación falla.</p>
+        </div>
+      </div>
+      <div class="quiz-box" id="quiz-1">
+        <h3>Quiz nivel 1</h3>
+        <div class="quiz-question">
+          <p>1. ¿Cuál es el estado de reposo (idle) de una línea UART?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">Bajo (0)</button>
+            <button class="quiz-option" data-correct="true">Alto (1)</button>
+            <button class="quiz-option">Alternando aleatoriamente</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question">
+          <p>2. RS-232 difiere de UART TTL principalmente en:</p>
+          <div class="quiz-options">
+            <button class="quiz-option">El orden de los bits</button>
+            <button class="quiz-option" data-correct="true">Los niveles de voltaje</button>
+            <button class="quiz-option">La velocidad máxima</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- NIVEL 2 -->
+    <section class="level" id="nivel-2" data-level="2">
+      <h2><span class="num">2</span> Lógica secuencial y contadores <span class="level-tag tag-intermedio">Intermedio</span></h2>
+      <p>Para generar los tiempos de bit necesitamos dividir el reloj. Un <strong>flip-flop</strong> almacena un bit en cada flanco activo. Contadores encadenados dividen la frecuencia.</p>
+      <div class="card">
+        <h4>Parámetro CLKS_PER_BIT</h4>
+        <p><code class="inline">CLKS_PER_BIT = f_clk / baudrate</code>. Por ejemplo, con un reloj de 16 MHz y baudrate 1 Mbps, <code class="inline">CLKS_PER_BIT = 16</code>.</p>
+        <p>El redondeo introduce error. La calculadora muestra el error porcentual.</p>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-box">
+          <label for="fclk">f_clk (MHz): <span id="fclkval">16</span> MHz</label>
+          <input type="range" id="fclk" min="1" max="100" value="16" step="0.1">
+          <label for="baud">Baudrate: <span id="baudval">9600</span> baud</label>
+          <input type="range" id="baud" min="300" max="3000000" value="9600" step="10">
+          <div class="calc-output" id="divCalcResult">Divisor: 1666.67 → error: -0.01%</div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Máquinas de estados (FSM)</h4>
+        <p>El transmisor y receptor del UART son FSMs: IDLE → START → DATA → STOP → IDLE. Cada estado consume exactamente <code class="inline">CLKS_PER_BIT</code> ciclos de reloj.</p>
+      </div>
+      <div class="quiz-box" id="quiz-2">
+        <h3>Quiz nivel 2</h3>
+        <div class="quiz-question">
+          <p>1. Si f_clk=50 MHz y baud=1.25 Mbps, CLKS_PER_BIT es:</p>
+          <div class="quiz-options">
+            <button class="quiz-option">25</button>
+            <button class="quiz-option" data-correct="true">40</button>
+            <button class="quiz-option">16</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question">
+          <p>2. ¿Qué estado sigue a TX_START?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">TX_STOP</button>
+            <button class="quiz-option" data-correct="true">TX_DATA</button>
+            <button class="quiz-option">TX_IDLE</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- NIVEL 3 -->
+    <section class="level" id="nivel-3" data-level="3">
+      <h2><span class="num">3</span> La trama UART 8N1 <span class="level-tag tag-intermedio">Intermedio</span></h2>
+      <p>La trama 8N1 consta de <strong>1 bit de inicio</strong> (0), <strong>8 bits de datos LSB primero</strong> y <strong>1 bit de stop</strong> (1). El receptor muestrea en el punto medio de cada bit para máxima inmunidad al ruido.</p>
+      <p>El siguiente código es el corazón del DUT del repositorio:</p>
+      <pre><code class="sv">module uart_core #(
+  parameter int CLKS_PER_BIT = 16
+) (
+  input  logic clk, rst_n,
+  input  logic [7:0] tx_data,
+  input  logic tx_valid, output logic tx_ready, txd,
+  input  logic rxd, output logic [7:0] rx_data,
+  output logic rx_valid, rx_frame_err
+);
+  // Transmisor: TX_IDLE → TX_START → TX_DATA → TX_STOP
+  // Receptor: doble flip-flop en rxd, muestreo medio de bit,
+  // recuperación tras error de trama esperando línea alta.</code></pre>
+      <p>Prueba el simulador interactivo. Escribe un byte en hex o un carácter ASCII, elige <code class="inline">CLKS_PER_BIT</code> y pulsa Play.</p>
+      <div class="sim-controls">
+        <label>Byte (1 carácter ASCII, 2 dígitos hex o 0x..):<input type="text" id="simByte" value="41" size="5" aria-label="Byte hex o ASCII"></label>
+        <label>CLKS_PER_BIT:
+          <select id="simClksPerBit">
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="16" selected>16</option>
+          </select>
+        </label>
+        <label>Skew RX (%): <input type="range" id="simSkew" min="-10" max="10" value="0" step="1" aria-label="Skew de baudrate receptor"> <span id="simSkewVal">0%</span></label>
+        <label><input type="checkbox" id="simBadStop"> Bad stop bit</label>
+        <label><input type="checkbox" id="simGlitch"> Glitch start</label>
+        <button class="btn play" id="simPlayBtn" aria-label="Reproducir simulación">Play</button>
+        <button class="btn step" id="simStepBtn" aria-label="Paso a paso">Step</button>
+      </div>
+      <div class="waveform-container" id="simWavecontainer" aria-label="Forma de onda UART"></div>
+      <div class="state-display" id="simStates"></div>
+      <div class="card">
+        <h4>Comportamiento del receptor</h4>
+        <ul>
+          <li><strong>Sincronización doble flip-flop</strong> en <code class="inline">rxd</code> para evitar metaestabilidad.</li>
+          <li>Detecta flanco bajo en <code class="inline">rxd_s2</code> (2 ciclos de retraso).</li>
+          <li>Valida el bit de inicio muestreando a mitad del bit: si es alto, descarta como glitch.</li>
+          <li>Muestrea los 8 datos a mitad de bit, luego el stop. Si el stop es bajo, genera <code class="inline">rx_frame_err</code> y espera línea alta antes de buscar otra trama.</li>
+        </ul>
+      </div>
+      <div class="quiz-box" id="quiz-3">
+        <h3>Quiz nivel 3</h3>
+        <div class="quiz-question">
+          <p>1. En 8N1, ¿cuántos bits tiene la trama total?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">8</button>
+            <button class="quiz-option">9</button>
+            <button class="quiz-option" data-correct="true">10</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question">
+          <p>2. ¿Cuándo muestrea el receptor un bit de datos?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">En el flanco de inicio</button>
+            <button class="quiz-option" data-correct="true">En el centro del bit</button>
+            <button class="quiz-option">Al final del bit</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- NIVEL 4 -->
+    <section class="level" id="nivel-4" data-level="4">
+      <h2><span class="num">4</span> Verificación con UVM <span class="level-tag tag-avanzado">Avanzado</span></h2>
+      <p>UVM organiza la verificación en capas: <strong>secuencias</strong> generan transacciones, <strong>drivers</strong> convierten en señales, <strong>monitores</strong> observan la interfaz, <strong>scoreboard</strong> compara, <strong>coverage</strong> mide.</p>
+      <svg class="arch-svg" viewBox="0 0 800 400" role="img" aria-label="Diagrama de arquitectura UVM del testbench UART">
+        <defs><filter id="glow"><feGaussianBlur stdDeviation="3"/></filter></defs>
+        <rect x="10" y="10" width="150" height="50" rx="8" fill="#0d1424" stroke="#00e5ff" id="archSeq" class="clickable" tabindex="0" role="button" aria-label="uvm_sequence"/>
+        <text x="85" y="40" fill="#00e5ff" text-anchor="middle" font-size="12">uvm_sequence</text>
+        <rect x="220" y="10" width="150" height="50" rx="8" fill="#0d1424" stroke="#00e5ff" id="archDriver" class="clickable" tabindex="0" role="button" aria-label="uart_tx_driver"/>
+        <text x="295" y="40" fill="#00e5ff" text-anchor="middle" font-size="12">uart_tx_driver</text>
+        <rect x="430" y="10" width="150" height="50" rx="8" fill="#0d1424" stroke="#00e5ff" id="archMonitor" class="clickable" tabindex="0" role="button" aria-label="uart_tx_monitor"/>
+        <text x="505" y="40" fill="#00e5ff" text-anchor="middle" font-size="12">uart_tx_monitor</text>
+        <rect x="640" y="10" width="140" height="50" rx="8" fill="#0d1424" stroke="#ff2bd6" id="archScoreboard" class="clickable" tabindex="0" role="button" aria-label="uart_scoreboard"/>
+        <text x="710" y="40" fill="#ff2bd6" text-anchor="middle" font-size="12">uart_scoreboard</text>
+        <rect x="220" y="100" width="150" height="50" rx="8" fill="#0d1424" stroke="#00e5ff" id="archTXAgent" class="clickable" tabindex="0" role="button" aria-label="uart_tx_agent"/>
+        <text x="295" y="130" fill="#00e5ff" text-anchor="middle" font-size="12">uart_tx_agent</text>
+        <rect x="220" y="200" width="150" height="50" rx="8" fill="#0d1424" stroke="#ff2bd6" id="archRXAgent" class="clickable" tabindex="0" role="button" aria-label="uart_rx_agent"/>
+        <text x="295" y="230" fill="#ff2bd6" text-anchor="middle" font-size="12">uart_rx_agent</text>
+        <rect x="220" y="300" width="150" height="50" rx="8" fill="#0d1424" stroke="#b4ff00" id="archCoverage" class="clickable" tabindex="0" role="button" aria-label="uart_coverage"/>
+        <text x="295" y="330" fill="#b4ff00" text-anchor="middle" font-size="12">uart_coverage</text>
+        <rect x="430" y="100" width="150" height="50" rx="8" fill="#0d1424" stroke="#00e5ff" id="archMonTX" class="clickable" tabindex="0" role="button" aria-label="uart_tx_monitor line_ap"/>
+        <text x="505" y="130" fill="#00e5ff" text-anchor="middle" font-size="12">uart_tx_monitor</text>
+        <rect x="430" y="200" width="150" height="50" rx="8" fill="#0d1424" stroke="#ff2bd6" id="archMonRX" class="clickable" tabindex="0" role="button" aria-label="uart_rx_monitor"/>
+        <text x="505" y="230" fill="#ff2bd6" text-anchor="middle" font-size="12">uart_rx_monitor</text>
+        <rect x="640" y="100" width="140" height="50" rx="8" fill="#0d1424" stroke="#b4ff00" id="archEnv" class="clickable" tabindex="0" role="button" aria-label="uart_env"/>
+        <text x="710" y="130" fill="#b4ff00" text-anchor="middle" font-size="12">uart_env</text>
+        <rect x="640" y="200" width="140" height="50" rx="8" fill="#0d1424" stroke="#00e5ff" id="archIF" class="clickable" tabindex="0" role="button" aria-label="uart_if"/>
+        <text x="710" y="230" fill="#00e5ff" text-anchor="middle" font-size="12">uart_if</text>
+        <rect x="640" y="300" width="140" height="50" rx="8" fill="#0d1424" stroke="#ff2bd6" id="archDUT" class="clickable" tabindex="0" role="button" aria-label="uart_core DUT"/>
+        <text x="710" y="330" fill="#ff2bd6" text-anchor="middle" font-size="12">uart_core (DUT)</text>
+      </svg>
+      <div class="arch-info" id="archInfo">Haz clic en un componente para ver el archivo correspondiente.</div>
+      <div class="card">
+        <h4>Estos son los archivos reales del testbench UVM</h4>
+        <ul>
+          <li><code class="inline">tb/uart_if.sv</code> – interfaz con señales clk, rst_n, etc.</li>
+          <li><code class="inline">tb/uart_tx_driver.sv</code> – entrega bytes al DUT cuando <code class="inline">tx_ready</code> alto.</li>
+          <li><code class="inline">tb/uart_rx_driver.sv</code> – bit-banguea <code class="inline">rxd</code> con opciones <code class="inline">bad_stop</code> y <code class="inline">glitch</code>.</li>
+          <li><code class="inline">tb/uart_scoreboard.sv</code> – compara host vs línea y línea vs salidas.</li>
+          <li><code class="inline">tb/uart_coverage.sv</code> – mide cobertura funcional.</li>
+          <li><code class="inline">tb/tb_top.sv</code> – top-level con DUT, interfaz y arranque UVM.</li>
+        </ul>
+      </div>
+      <div class="quiz-box" id="quiz-4">
+        <h3>Quiz nivel 4</h3>
+        <div class="quiz-question">
+          <p>1. ¿Qué capa UVM genera los estímulos?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">Monitor</button>
+            <button class="quiz-option" data-correct="true">Sequence</button>
+            <button class="quiz-option">Scoreboard</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question">
+          <p>2. El análisis de las señales de la línea se realiza en:</p>
+          <div class="quiz-options">
+            <button class="quiz-option">Driver</button>
+            <button class="quiz-option" data-correct="true">Monitor</button>
+            <button class="quiz-option">Env</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- NIVEL 5 -->
+    <section class="level" id="nivel-5" data-level="5">
+      <h2><span class="num">5</span> Cobertura y aserciones <span class="level-tag tag-avanzado">Avanzado</span></h2>
+      <p>La cobertura funcional garantiza que probamos todos los casos interesantes. Las aserciones SVA validan protocolos en tiempo real.</p>
+      <div class="card">
+        <h4>Covergroups del testbench real</h4>
+        <ul>
+          <li><code class="inline">tx_data_cg</code>: data patterns zero, FF, AA, 55, walking.</li>
+          <li><code class="inline">tx_gap_cg</code>: gaps cortos y largos entre bytes.</li>
+          <li><code class="inline">tx_backtoback_cg</code>: back-to-back con gap = 0.</li>
+          <li><code class="inline">rx_bad_stop_cg</code> y <code class="inline">rx_glitch_cg</code>: errores inyectados.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Ejemplos de aserciones SVA</h4>
+        <pre><code class="sv">// 1: tx_ready solo cuando TX_IDLE
+property tx_ready_idle;
+  @(posedge clk) disable iff (!rst_n)
+    (tx_ready) |-> (tx_state == TX_IDLE);
+endproperty
+
+// 2: tras tx_valid aceptado, txd baja en el siguiente ciclo
+property start_bit_low;
+  @(posedge clk) disable iff (!rst_n)
+    (tx_valid && tx_ready) |=> (txd == 1'b0);
+endproperty
+
+// 3: rx_valid y rx_frame_err nunca simultáneos
+property rx_exclusive;
+  @(posedge clk) disable iff (!rst_n)
+    !(rx_valid && rx_frame_err);
+endproperty
+
+// 4: tras rx_frame_err, el receptor entra en recuperación
+property frame_err_recover;
+  @(posedge clk) disable iff (!rst_n)
+    (rx_frame_err) |-> (rx_state == RX_RECOVER);
+endproperty</code></pre>
+      </div>
+      <p>Juego de cierre de cobertura: genera tramas aleatorias y observa cómo se llenan los bins.</p>
+      <div class="coverage-game" id="coverageGame">
+        <button class="btn" id="btnRandomFrame">Generar trama aleatoria</button>
+        <span id="covProgress">Cobertura: 0%</span>
+      </div>
+      <div class="coverage-bins" id="covBins">
+        <span class="coverage-bin" data-bin="zero">zero</span>
+        <span class="coverage-bin" data-bin="ff">ff</span>
+        <span class="coverage-bin" data-bin="aa">aa</span>
+        <span class="coverage-bin" data-bin="55">55</span>
+        <span class="coverage-bin" data-bin="walking">walking</span>
+        <span class="coverage-bin" data-bin="others">others</span>
+      </div>
+      <div class="quiz-box" id="quiz-5">
+        <h3>Quiz nivel 5</h3>
+        <div class="quiz-question">
+          <p>1. ¿Qué bin de cobertura captura el valor 0xAA?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">zero</button>
+            <button class="quiz-option" data-correct="true">aa</button>
+            <button class="quiz-option">walking</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question">
+          <p>2. La aserción <code class="inline">rx_valid && rx_frame_err</code> nunca debe ser cierta. ¿Qué propiedad representa?</p>
+          <div class="quiz-options">
+            <button class="quiz-option" data-correct="true">Mutua exclusión</button>
+            <button class="quiz-option">Implicación</button>
+            <button class="quiz-option">Temporalidad</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- NIVEL 6 -->
+    <section class="level" id="nivel-6" data-level="6">
+      <h2><span class="num">6</span> Nivel empresa <span class="level-tag tag-experto">Experto</span></h2>
+      <p>En producción, la verificación es sistemática: regresiones con semillas, integración continua, checklist de sign-off y barridos de tolerancia.</p>
+      <div class="card-row">
+        <div class="card"><h4>Regresiones y CI</h4><p>Se lanzan múltiples tests con diferentes semillas en cada push. Un fallo bloquea la fusión.</p></div>
+        <div class="card"><h4>Sign-off checklist</h4><p>Cobertura ≥ meta, no errores pendientes, regresión limpia, revisión por pares.</p></div>
+        <div class="card"><h4>Prácticas de industria</h4><p>Verificación basada en aserciones, verificación formal, constrained random, code review obligatorio.</p></div>
+      </div>
+      <p>Comparación: UART es asíncrono y punto a punto; SPI es síncrono maestra-esclava con líneas separadas; I2C usa dos cables con direccionamiento.</p>
+      <h3>Tolerancia de baudrate medida (simulación JS del modelo RTL)</h3>
+      <button class="btn" id="btnRunSweep">Ejecutar barrido -10% a +10%</button>
+      <div class="sweep-chart" id="sweepChart" aria-label="Gráfico de pass/fail por skew de baudrate"></div>
+      <div class="quiz-box" id="quiz-6">
+        <h3>Quiz nivel 6</h3>
+        <div class="quiz-question">
+          <p>1. ¿Qué es una regresión?</p>
+          <div class="quiz-options">
+            <button class="quiz-option">Un test manual</button>
+            <button class="quiz-option" data-correct="true">Un conjunto de tests repetidos automáticamente</button>
+            <button class="quiz-option">Un bug recurrente</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+        <div class="quiz-question">
+          <p>2. ¿Por qué se usan semillas en constrained random?</p>
+          <div class="quiz-options">
+            <button class="quiz-option" data-correct="true">Para reproducir fallos</button>
+            <button class="quiz-option">Para acelerar el DUT</button>
+            <button class="quiz-option">Para reducir la cobertura</button>
+          </div>
+          <p class="quiz-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="level" id="nivel-7" data-level="7">
+  <h2><span class="num">7</span> Entrevista: preguntas difíciles y corner cases <span class="level-tag tag-experto">Experto</span></h2>
+  <p>Preparación de entrevistas para puestos de <strong>Verification Engineer</strong>. Incluye corner cases específicos de este DUT UART 8N1 y preguntas de pizarra con código SystemVerilog.</p>
+  <div class="iv-interview">
+    <div class="iv-toolbar" role="group" aria-label="Filtros de entrevista">
+      <div class="iv-filter-group" role="group" aria-label="Filtrar por categoría">
+        <button class="iv-chip" data-cat="all" aria-pressed="true">Todas</button>
+        <button class="iv-chip" data-cat="UVM" aria-pressed="false">UVM</button>
+        <button class="iv-chip" data-cat="SystemVerilog" aria-pressed="false">SystemVerilog</button>
+        <button class="iv-chip" data-cat="SVA" aria-pressed="false">SVA</button>
+        <button class="iv-chip" data-cat="Cobertura" aria-pressed="false">Cobertura</button>
+        <button class="iv-chip" data-cat="Protocolo UART" aria-pressed="false">Protocolo UART</button>
+        <button class="iv-chip" data-cat="Debug" aria-pressed="false">Debug</button>
+        <button class="iv-chip" data-cat="Diseño de TB" aria-pressed="false">Diseño de TB</button>
+        <button class="iv-chip" data-cat="Pizarra" aria-pressed="false">Pizarra</button>
+      </div>
+      <div class="iv-filter-group" role="group" aria-label="Filtrar por nivel">
+        <button class="iv-chip" data-lvl="all" aria-pressed="true">Todos</button>
+        <button class="iv-chip" data-lvl="1" aria-pressed="false">Junior</button>
+        <button class="iv-chip" data-lvl="2" aria-pressed="false">Intermedio</button>
+        <button class="iv-chip" data-lvl="3" aria-pressed="false">Senior</button>
+      </div>
+      <input type="search" class="iv-search" id="ivSearch" placeholder="Buscar preguntas..." aria-label="Buscar preguntas de entrevista">
+    </div>
+
+    <div class="iv-progress">
+      <div class="iv-progress-label"><span id="ivMasteredCount">0</span>/<span id="ivTotalCount">0</span> dominadas</div>
+      <div class="iv-progress-track" role="progressbar" aria-label="Progreso de flashcards dominadas" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="iv-progress-fill" id="ivProgressFill"></div>
+      </div>
+    </div>
+
+    <div class="iv-flashcards" id="ivFlashcards"></div>
+
+    <div class="iv-simula">
+      <button class="btn iv-btn" id="ivSimulaBtn" aria-controls="ivSimulaPanel" aria-expanded="false">🎯 Simulacro</button>
+      <div class="iv-simula-panel" id="ivSimulaPanel" hidden>
+        <div class="iv-simula-question" id="ivSimulaQuestion"></div>
+        <div class="iv-simula-timer" id="ivSimulaTimer" role="timer" aria-label="Tiempo restante">90 s</div>
+        <div class="iv-simula-actions">
+          <button class="btn iv-btn" id="ivSimulaReveal">Revelar respuesta</button>
+          <button class="btn iv-btn iv-btn-known" id="ivSimulaKnown" disabled>✅ Sí lo sabía</button>
+          <button class="btn iv-btn iv-btn-bad" id="ivSimulaUnknown" disabled>❌ No lo sabía</button>
+        </div>
+        <div class="iv-simula-answer" id="ivSimulaAnswer" hidden></div>
+      </div>
+    </div>
+
+    <div class="iv-checklist card">
+      <h3>Checklist de corner cases del UART</h3>
+      <ul class="iv-checklist-list" id="ivChecklist"></ul>
+    </div>
+
+    <div class="card">
+      <h4>Cómo estructurar tu respuesta</h4>
+      <ol>
+        <li><strong>Clarifica la spec</strong>: ¿formato? ¿baud? ¿errores? ¿handshake?</li>
+        <li><strong>Planifica</strong>: arquitectura UVM, secuencias, drivers, monitores.</li>
+        <li><strong>Checkers</strong>: aserciones SVA y scoreboard con modelos de referencia.</li>
+        <li><strong>Cobertura</strong>: puntos funcionales y corner cases.</li>
+        <li><strong>Corner cases</strong>: errores de trama, back-to-back, reset, glitches.</li>
+        <li><strong>Debug</strong>: semillas, primera divergencia, regresión.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h4>Fuentes de inspiración</h4>
+      <ul>
+        <li><a href="https://verificationacademy.com/forums/t/constraint-randomization-interview-question/39874" target="_blank" rel="noopener noreferrer">Verification Academy: constraint randomization</a></li>
+        <li><a href="https://www.compoundlearn.ai/questions/verification-engineer-interview-questions" target="_blank" rel="noopener noreferrer">CompoundLearn: verification engineer interview questions</a></li>
+        <li><a href="https://vlsiweb.com/design-verification-interview-questions/" target="_blank" rel="noopener noreferrer">VLSI Web: design verification interview questions</a></li>
+        <li><a href="https://theartofverification.com/system-verilog-interview-questions/" target="_blank" rel="noopener noreferrer">The Art of Verification: SystemVerilog interview questions</a></li>
+        <li><a href="https://forum.allaboutcircuits.com/threads/uart-receiver-framing-error.138269/" target="_blank" rel="noopener noreferrer">All About Circuits: UART receiver framing error</a></li>
+        <li><a href="https://nerdyelectronics.com/uart-protocol-deep-dive/" target="_blank" rel="noopener noreferrer">Nerdy Electronics: UART protocol deep dive</a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer style="text-align:center; margin-top:3rem; color:var(--muted);">
+      <p><a href="index.html">Guía interactiva UVM</a> — docs/curso.html — Repo UVM UART Verification Guide</p>
+      <p>Licencia MIT. Curso interactivo sin dependencias externas.</p>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ---------- Syntax highlighting (simple) ----------
+  function syntaxHighlight() {
+    document.querySelectorAll('pre code.sv').forEach(block => {
+      let html = block.innerHTML;
+      html = html.replace(/(\/\/[^\n]*)/g, '<span class="cm">$1</span>');
+      html = html.replace(/\b(module|endmodule|parameter|localparam|input|output|logic|always_ff|always|posedge|negedge|if|else|begin|end|case|endcase|assign|typedef|enum|covergroup|endgroup|property|endproperty|disable|iff|not|and|or)\b/g, '<span class="kw">$1</span>');
+      html = html.replace(/\b([0-9]+'[bodh][0-9a-fA-F_]+|\b\d+)\b/g, '<span class="num">$1</span>');
+      block.innerHTML = html;
+    });
+  }
+
+  // ---------- Scrollspy & progress bar ----------
+  const navLinks = Array.from(document.querySelectorAll('#navList a'));
+  const sections = Array.from(document.querySelectorAll('section.level'));
+  const progressBar = document.getElementById('progressBar');
+  function updateScroll() {
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    progressBar.style.width = (scrollTop / docHeight * 100) + '%';
+    let currentId = sections[0] ? sections[0].id : null;
+    sections.forEach(section => {
+      const rect = section.getBoundingClientRect();
+      if (rect.top <= 100) currentId = section.id;
+    });
+    navLinks.forEach(link => {
+      link.classList.toggle('active', link.getAttribute('href') === '#' + currentId);
+    });
+  }
+  window.addEventListener('scroll', updateScroll, { passive: true });
+  window.addEventListener('resize', updateScroll);
+  updateScroll();
+
+  // ---------- Level 0 calculator ----------
+  const ohmV = document.getElementById('ohmV');
+  const ohmR = document.getElementById('ohmR');
+  const ohmVval = document.getElementById('ohmVval');
+  const ohmRval = document.getElementById('ohmRval');
+  const ohmResult = document.getElementById('ohmResult');
+  function updateOhm() {
+    const V = parseFloat(ohmV.value);
+    const R = parseFloat(ohmR.value);
+    ohmVval.textContent = V;
+    ohmRval.textContent = R;
+    const I = V / R;
+    ohmResult.textContent = 'Corriente: ' + (I * 1000).toFixed(2) + ' mA';
+  }
+  ohmV.addEventListener('input', updateOhm);
+  ohmR.addEventListener('input', updateOhm);
+  updateOhm();
+
+  const divVin = document.getElementById('divVin');
+  const divR1 = document.getElementById('divR1');
+  const divR2 = document.getElementById('divR2');
+  const divVinval = document.getElementById('divVinval');
+  const divR1val = document.getElementById('divR1val');
+  const divR2val = document.getElementById('divR2val');
+  const divResult = document.getElementById('divResult');
+  function updateDivider() {
+    const Vin = parseFloat(divVin.value);
+    const R1 = parseFloat(divR1.value);
+    const R2 = parseFloat(divR2.value);
+    divVinval.textContent = Vin;
+    divR1val.textContent = R1;
+    divR2val.textContent = R2;
+    const Vout = Vin * R2 / (R1 + R2);
+    divResult.textContent = 'Vout: ' + Vout.toFixed(2) + ' V';
+  }
+  divVin.addEventListener('input', updateDivider);
+  divR1.addEventListener('input', updateDivider);
+  divR2.addEventListener('input', updateDivider);
+  updateDivider();
+
+  // ---------- Level 2 clock divider calculator ----------
+  const fclk = document.getElementById('fclk');
+  const baud = document.getElementById('baud');
+  const fclkval = document.getElementById('fclkval');
+  const baudval = document.getElementById('baudval');
+  const divCalcResult = document.getElementById('divCalcResult');
+  function updateDivCalculator() {
+    const f = parseFloat(fclk.value) * 1e6;
+    const b = parseFloat(baud.value);
+    fclkval.textContent = fclk.value;
+    baudval.textContent = baud.value;
+    if (b === 0) { divCalcResult.textContent = 'Baudrate inválido'; return; }
+    const ideal = f / b;
+    const rounded = Math.round(ideal);
+    const actualBaud = f / rounded;
+    const error = (actualBaud - b) / b * 100;
+    divCalcResult.textContent = `Divisor: ${ideal.toFixed(2)} → redondeado: ${rounded} → error: ${error.toFixed(2)}%`;
+  }
+  fclk.addEventListener('input', updateDivCalculator);
+  baud.addEventListener('input', updateDivCalculator);
+  updateDivCalculator();
+
+  // ---------- UART Simulator ----------
+  const simByteInput = document.getElementById('simByte');
+  const simClksPerBit = document.getElementById('simClksPerBit');
+  const simSkew = document.getElementById('simSkew');
+  const simSkewVal = document.getElementById('simSkewVal');
+  const simBadStop = document.getElementById('simBadStop');
+  const simGlitch = document.getElementById('simGlitch');
+  const simPlayBtn = document.getElementById('simPlayBtn');
+  const simStepBtn = document.getElementById('simStepBtn');
+  const simWavecontainer = document.getElementById('simWavecontainer');
+  const simStatesDiv = document.getElementById('simStates');
+
+  simSkew.addEventListener('input', () => { simSkewVal.textContent = simSkew.value + '%'; });
+
+  function parseByte(str) {
+    str = str.trim();
+    if (str.startsWith('0x') || str.startsWith('0X')) {
+      const hex = str.slice(2);
+      if (/^[0-9a-fA-F]{1,2}$/.test(hex)) return parseInt(hex, 16);
+    } else if (str.length === 1) {
+      const code = str.charCodeAt(0);
+      if (code >= 0 && code <= 255) return code;
+    } else if (/^[0-9a-fA-F]{2}$/.test(str)) {
+      return parseInt(str, 16);
+    }
+    return NaN;
+  }
+
+  let simTrace = [];
+  let simCurrent = 0;
+  let simTotal = 0;
+  let simPlaying = false;
+  let simTimer = null;
+  let simDataByte = 0x41;
+  let simClks = 16;
+  let simSkewPct = 0;
+  let simBad = false;
+  let simGlitchFlag = false;
+
+  function generateSimulation(dataByte, clks, skewPct, badStop, glitchFlag) {
+    const idleCycles = glitchFlag ? 3 : 2; // extra idle to show glitch
+    const frameBits = 10; // start + 8 data + stop
+    const frameCycles = frameBits * clks;
+    const tailCycles = 2;
+    const total = idleCycles + frameCycles + tailCycles;
+    const txdArr = [];
+    const rxdArr = [];
+    // build TX waveform
+    for (let i = 0; i < idleCycles; i++) txdArr.push(1);
+    // start bit
+    for (let i = 0; i < clks; i++) txdArr.push(0);
+    // data bits LSB first
+    for (let bit = 0; bit < 8; bit++) {
+      const val = (dataByte >> bit) & 1;
+      for (let i = 0; i < clks; i++) txdArr.push(val);
+    }
+    // stop bit
+    for (let i = 0; i < clks; i++) txdArr.push(1);
+    // tail idle
+    for (let i = 0; i < tailCycles; i++) txdArr.push(1);
+
+    // build rxd with corruption
+    for (let i = 0; i < total; i++) rxdArr.push(txdArr[i]);
+    if (glitchFlag) {
+      // inject low on first two idle cycles before start (cycles 0,1)
+      rxdArr[0] = 0;
+      rxdArr[1] = 0;
+    }
+    if (badStop) {
+      const stopStart = idleCycles + 9 * clks; // start + 8 data = 9 bits
+      for (let i = stopStart; i < stopStart + clks; i++) {
+        rxdArr[i] = 0;
+      }
+    }
+
+    const rxPeriod = Math.max(1, Math.round(clks * (1 + skewPct / 100)));
+    const rxHalf = Math.floor(rxPeriod / 2);
+
+    // TX state per cycle (for display)
+    const txStateArr = [];
+    const txBitArr = [];
+    const txShiftArr = [];
+    let idx = 0;
+    for (let i = 0; i < idleCycles; i++) { txStateArr.push('TX_IDLE'); txBitArr.push(0); txShiftArr.push(dataByte); idx++; }
+    for (let i = 0; i < clks; i++) { txStateArr.push('TX_START'); txBitArr.push(0); txShiftArr.push(dataByte); idx++; }
+    for (let bit = 0; bit < 8; bit++) {
+      for (let i = 0; i < clks; i++) { txStateArr.push('TX_DATA'); txBitArr.push(bit); txShiftArr.push(dataByte); idx++; }
+    }
+    for (let i = 0; i < clks; i++) { txStateArr.push('TX_STOP'); txBitArr.push(8); txShiftArr.push(dataByte); idx++; }
+    for (let i = 0; i < tailCycles; i++) { txStateArr.push('TX_IDLE'); txBitArr.push(0); txShiftArr.push(dataByte); idx++; }
+
+    // RX simulation
+    let rxState = 'RX_IDLE';
+    let rxCnt = 0;
+    let rxBit = 0;
+    let rxShift = 0;
+    let rxData = 0;
+    let rxValid = 0;
+    let rxFrameErr = 0;
+    let rxd_s1 = 1, rxd_s2 = 1;
+    const trace = [];
+
+    for (let t = 0; t < total; t++) {
+      const rxdVal = rxdArr[t];
+      const currentRxd_s2 = rxd_s2; // value before clock edge
+
+      let nextRxState = rxState;
+      let nextRxCnt = rxCnt;
+      let nextRxBit = rxBit;
+      let nextRxShift = rxShift;
+      let nextRxData = rxData;
+      let nextRxValid = 0;
+      let nextRxFrameErr = 0;
+      let sampleOccurred = false;
+      let sampleBit = -1;
+
+      switch (rxState) {
+        case 'RX_IDLE':
+          if (!currentRxd_s2) { nextRxCnt = 0; nextRxState = 'RX_START'; }
+          break;
+        case 'RX_START':
+          if (rxCnt == rxHalf - 1) {
+            nextRxCnt = 0;
+            sampleOccurred = true; sampleBit = -1;
+            if (!currentRxd_s2) { nextRxBit = 0; nextRxState = 'RX_DATA'; }
+            else { nextRxState = 'RX_IDLE'; }
+          } else {
+            nextRxCnt = rxCnt + 1;
+          }
+          break;
+        case 'RX_DATA':
+          if (rxCnt == rxPeriod - 1) {
+            nextRxCnt = 0;
+            sampleOccurred = true; sampleBit = rxBit;
+            let shift = nextRxShift;
+            if (currentRxd_s2) shift |= (1 << rxBit); else shift &= ~(1 << rxBit);
+            nextRxShift = shift;
+            if (rxBit == 7) nextRxState = 'RX_STOP'; else nextRxBit = rxBit + 1;
+          } else {
+            nextRxCnt = rxCnt + 1;
+          }
+          break;
+        case 'RX_STOP':
+          if (rxCnt == rxPeriod - 1) {
+            nextRxCnt = 0;
+            sampleOccurred = true; sampleBit = 8;
+            if (currentRxd_s2) {
+              nextRxData = rxShift;
+              nextRxValid = 1;
+              nextRxState = 'RX_IDLE';
+            } else {
+              nextRxFrameErr = 1;
+              nextRxState = 'RX_RECOVER';
+            }
+          } else {
+            nextRxCnt = rxCnt + 1;
+          }
+          break;
+        case 'RX_RECOVER':
+          if (currentRxd_s2) nextRxState = 'RX_IDLE';
+          break;
+      }
+
+      trace.push({
+        t,
+        txd: txdArr[t],
+        rxd: rxdVal,
+        rxd_s2: currentRxd_s2,
+        txState: txStateArr[t],
+        txBit: txBitArr[t],
+        txShift: txShiftArr[t],
+        rxState: nextRxState,
+        rxCnt: nextRxCnt,
+        rxBit: nextRxBit,
+        rxShift: nextRxShift,
+        rxData: nextRxData,
+        rxValid: nextRxValid,
+        rxFrameErr: nextRxFrameErr,
+        sample: sampleOccurred,
+        sampleBit
+      });
+
+      // update for next cycle
+      rxState = nextRxState;
+      rxCnt = nextRxCnt;
+      rxBit = nextRxBit;
+      rxShift = nextRxShift;
+      rxData = nextRxData;
+      rxValid = nextRxValid;
+      rxFrameErr = nextRxFrameErr;
+      const old_s1 = rxd_s1;
+      rxd_s1 = rxdVal;
+      rxd_s2 = old_s1;
+    }
+    return { trace, total, txdArr, rxdArr };
+  }
+
+  function renderWaveform(trace, total, current) {
+    const unit = 5; // px per clock cycle
+    const width = total * unit;
+    const height = 100;
+    const yTop = 20, yLow = 45, yHigh = 45;
+    let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="background:#060a14;font-family:monospace">`;
+    // txd waveform
+    let pathTx = `M 0 ${yHigh} `;
+    let prevTxd = null;
+    for (let i = 0; i < total; i++) {
+      const val = trace[i].txd;
+      const x = i * unit;
+      if (prevTxd === null) prevTxd = val;
+      else if (val !== prevTxd) {
+        pathTx += `L ${x} ${yHigh} L ${x} ${val === 1 ? yHigh : yLow} `;
+        prevTxd = val;
+      } else {
+        pathTx += `L ${x + unit} ${val === 1 ? yHigh : yLow} `;
+      }
+    }
+    svg += `<path d="${pathTx}" fill="none" stroke="${'#00e5ff'}" stroke-width="2"/>`;
+    // rxd waveform
+    let pathRx = `M 0 ${yHigh + 30} `;
+    let prevRxd = null;
+    for (let i = 0; i < total; i++) {
+      const val = trace[i].rxd;
+      const x = i * unit;
+      if (prevRxd === null) prevRxd = val;
+      else if (val !== prevRxd) {
+        pathRx += `L ${x} ${yHigh + 30} L ${x} ${val === 1 ? yHigh + 30 : yLow + 30} `;
+        prevRxd = val;
+      } else {
+        pathRx += `L ${x + unit} ${val === 1 ? yHigh + 30 : yLow + 30} `;
+      }
+    }
+    svg += `<path d="${pathRx}" fill="none" stroke="${'#ff2bd6'}" stroke-width="2"/>`;
+    // sample markers
+    trace.forEach(tr => {
+      if (tr.sample) {
+        const x = tr.t * unit + unit / 2;
+        const y = tr.sampleBit === -1 ? yLow + 10 : (tr.sampleBit >= 0 && tr.sampleBit < 8 ? yLow + 15 : yLow + 20);
+        const color = tr.sampleBit === -1 ? '#b4ff00' : (tr.sampleBit === 8 ? '#ffb300' : '#00ffaa');
+        svg += `<circle cx="${x}" cy="${y}" r="2.5" fill="${color}"/>`;
+      }
+    });
+    // cursor
+    const cursorX = current * unit;
+    svg += `<line x1="${cursorX}" y1="0" x2="${cursorX}" y2="${height}" stroke="#ffffff" stroke-width="1" stroke-dasharray="2,2"/>`;
+    svg += `</svg>`;
+    simWavecontainer.innerHTML = svg;
+  }
+
+  function renderStates(trace, current) {
+    if (!trace.length) return;
+    const tr = trace[current];
+    const txShiftBinary = (tr.txShift >>> 0).toString(2).padStart(8, '0');
+    const rxShiftBinary = (tr.rxShift >>> 0).toString(2).padStart(8, '0');
+    simStatesDiv.innerHTML = `
+      <div class="state-chip">TX: ${tr.txState} | bit: ${tr.txBit} | shift: ${txShiftBinary}</div>
+      <div class="state-chip">RX: ${tr.rxState} | cnt: ${tr.rxCnt} | bit: ${tr.rxBit} | shift: ${rxShiftBinary}</div>
+      <div class="state-chip">rx_data: 0x${tr.rxData.toString(16).toUpperCase().padStart(2,'0')} | rx_valid: ${tr.rxValid} | rx_frame_err: ${tr.rxFrameErr}</div>
+    `;
+  }
+
+  function drawSim() {
+    if (!simTrace.length) return;
+    renderWaveform(simTrace, simTotal, simCurrent);
+    renderStates(simTrace, simCurrent);
+  }
+
+  function setupSimulation() {
+    const byteVal = parseByte(simByteInput.value);
+    if (isNaN(byteVal)) { alert('Byte inválido. Usa hex (p.ej. 41) o un carácter ASCII.'); return false; }
+    simDataByte = byteVal & 0xFF;
+    simClks = parseInt(simClksPerBit.value, 10);
+    simSkewPct = parseInt(simSkew.value, 10);
+    simBad = simBadStop.checked;
+    simGlitchFlag = simGlitch.checked;
+    const { trace, total } = generateSimulation(simDataByte, simClks, simSkewPct, simBad, simGlitchFlag);
+    simTrace = trace;
+    simTotal = total;
+    simCurrent = 0;
+    return true;
+  }
+
+  function stopSim() {
+    if (simTimer) { clearInterval(simTimer); simTimer = null; }
+    simPlaying = false;
+    simPlayBtn.textContent = 'Play';
+  }
+
+  simPlayBtn.addEventListener('click', () => {
+    if (simPlaying) { stopSim(); return; }
+    if (!setupSimulation()) return;
+    simPlaying = true;
+    simPlayBtn.textContent = 'Pause';
+    drawSim();
+    simTimer = setInterval(() => {
+      if (simCurrent < simTotal - 1) {
+        simCurrent++;
+        drawSim();
+      } else {
+        stopSim();
+      }
+    }, 40);
+  });
+
+  simStepBtn.addEventListener('click', () => {
+    if (!simTrace.length || simCurrent >= simTotal - 1) {
+      if (!setupSimulation()) return;
+    }
+    stopSim();
+    if (simCurrent < simTotal - 1) {
+      simCurrent++;
+      drawSim();
+    } else {
+      simCurrent = 0;
+      drawSim();
+    }
+  });
+
+  // Reset sim when parameters change? Just stop.
+  simByteInput.addEventListener('change', stopSim);
+  simClksPerBit.addEventListener('change', stopSim);
+  simSkew.addEventListener('change', stopSim);
+  simBadStop.addEventListener('change', stopSim);
+  simGlitch.addEventListener('change', stopSim);
+
+  // ---------- UVM architecture clickable ----------
+  const archInfo = document.getElementById('archInfo');
+  const archMap = {
+    archSeq: 'tb/uart_sequences.sv — Secuencias UVM para estimular ambos caminos.',
+    archDriver: 'tb/uart_tx_driver.sv — Entrega bytes al DUT cuando tx_ready está alto.',
+    archMonitor: 'tb/uart_tx_monitor.sv — Monitor TX: host_ap y line_ap decodificadas de txd.',
+    archScoreboard: 'tb/uart_scoreboard.sv — Compara camino TX (host vs línea) y RX (inyectado vs salidas).',
+    archTXAgent: 'tb/uart_agents.sv — Define uart_tx_agent.',
+    archRXAgent: 'tb/uart_agents.sv — Define uart_rx_agent.',
+    archCoverage: 'tb/uart_coverage.sv — Cobertura funcional.',
+    archMonTX: 'tb/uart_tx_monitor.sv — Monitor TX.',
+    archMonRX: 'tb/uart_rx_monitor.sv — Monitor RX: in_ap y out_ap.',
+    archEnv: 'tb/uart_env.sv — Entorno UVM que arma agentes, scoreboard y cobertura.',
+    archIF: 'tb/uart_if.sv — Interfaz SystemVerilog con las señales del UART.',
+    archDUT: 'rtl/uart_core.sv — DUT: núcleo UART 8N1 con parámetro CLKS_PER_BIT.'
+  };
+  Object.keys(archMap).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', () => { archInfo.textContent = archMap[id]; });
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); archInfo.textContent = archMap[id]; }});
+    }
+  });
+
+  // ---------- Quiz system ----------
+  function setupQuiz(sectionId) {
+    const container = document.getElementById('quiz-' + sectionId);
+    if (!container) return;
+    container.querySelectorAll('.quiz-question').forEach(q => {
+      const options = q.querySelectorAll('.quiz-option');
+      options.forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.correct === 'true') {
+            btn.classList.add('correct');
+            options.forEach(o => o.disabled = true);
+            q.querySelector('.quiz-feedback').textContent = '✅ Correcto';
+            saveQuizScore(sectionId, true);
+          } else {
+            btn.classList.add('incorrect');
+            btn.disabled = true;
+            q.querySelector('.quiz-feedback').textContent = '❌ Incorrecto. Inténtalo de nuevo.';
+          }
+        });
+      });
+    });
+  }
+  function saveQuizScore(level, correct) {
+    try {
+      const key = 'uart_quiz_scores';
+      let scores = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!scores[level]) scores[level] = { correct: 0, total: 0 };
+      scores[level].total++;
+      if (correct) scores[level].correct++;
+      localStorage.setItem(key, JSON.stringify(scores));
+    } catch(e) { /* ignore */ }
+  }
+  for (let i = 0; i <= 6; i++) setupQuiz(i);
+
+  // ---------- Coverage mini game ----------
+  const btnRandomFrame = document.getElementById('btnRandomFrame');
+  const covProgress = document.getElementById('covProgress');
+  const covBins = document.getElementById('covBins');
+  const bins = new Set();
+  function randomByte() { return Math.floor(Math.random() * 256); }
+  function classifyByte(v) {
+    if (v === 0x00) return 'zero';
+    if (v === 0xFF) return 'ff';
+    if (v === 0xAA) return 'aa';
+    if (v === 0x55) return '55';
+    if ([0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80].includes(v)) return 'walking';
+    return 'others';
+  }
+  function updateCoverage() {
+    const totalBins = 6;
+    const covered = bins.size;
+    const pct = (covered / totalBins) * 100;
+    covProgress.textContent = 'Cobertura: ' + Math.round(pct) + '%';
+    document.querySelectorAll('.coverage-bin').forEach(el => {
+      const bin = el.dataset.bin;
+      if (bins.has(bin)) el.classList.add('hit'); else el.classList.remove('hit');
+    });
+  }
+  btnRandomFrame.addEventListener('click', () => {
+    const val = randomByte();
+    const bin = classifyByte(val);
+    bins.add(bin);
+    updateCoverage();
+  });
+  updateCoverage();
+
+  // ---------- Baud sweep chart ----------
+  const btnRunSweep = document.getElementById('btnRunSweep');
+  const sweepChart = document.getElementById('sweepChart');
+  function runSweepJS() {
+    const pattern = [0x00, 0xFF, 0x55, 0xAA, 0x80, 0x01, 0x7F, 0xFE];
+    const clks = 16;
+    sweepChart.innerHTML = '';
+    let bars = [];
+    for (let skew = -10; skew <= 10; skew += 1) {
+      let ok = true;
+      for (let i = 0; i < pattern.length; i++) {
+        const { trace } = generateSimulation(pattern[i], clks, skew, false, false);
+        let dataOk = true;
+        let gotValid = 0;
+        let rxData = 0;
+        let frameErr = 0;
+        trace.forEach(tr => {
+          if (tr.rxValid) { gotValid++; rxData = tr.rxData; }
+          if (tr.rxFrameErr) frameErr++;
+        });
+        if (gotValid !== 1 || frameErr !== 0 || rxData !== pattern[i]) { ok = false; break; }
+      }
+      const bar = document.createElement('div');
+      bar.className = 'sweep-bar ' + (ok ? 'pass' : 'fail');
+      bar.title = skew + '%: ' + (ok ? 'PASS' : 'FAIL');
+      bars.push({ skew, ok, bar });
+    }
+    bars.forEach(b => sweepChart.appendChild(b.bar));
+  }
+  btnRunSweep.addEventListener('click', runSweepJS);
+
+  // run initial sweep? Not automatically to avoid heavy load, but we can hint.
+  runSweepJS(); // run on load for immediate chart
+
+  // ---------- init syntax ----------
+  syntaxHighlight();
+
+  // test parseByte
+  // initial sim display empty
+})();
+</script>
+<script>
+(function(){
+  "use strict";
+  var sb=document.getElementById('courseSidebar'),btn=document.getElementById('mobileMenuBtn'),bd=document.getElementById('mobileBackdrop');
+  if(!sb||!btn||!bd)return;
+  var links=sb.querySelectorAll('a');
+  function setOpen(o,focusBtn){
+    sb.classList.toggle('open',o);bd.classList.toggle('show',o);document.body.classList.toggle('nav-open',o);
+    btn.setAttribute('aria-expanded',o?'true':'false');
+    if(o&&links[0])setTimeout(function(){links[0].focus()},120);
+    if(!o&&focusBtn)btn.focus();
+  }
+  btn.addEventListener('click',function(){setOpen(!sb.classList.contains('open'),true)});
+  bd.addEventListener('click',function(){setOpen(false,true)});
+  links.forEach(function(l){l.addEventListener('click',function(){setOpen(false,false)})});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&sb.classList.contains('open'))setOpen(false,true)});
+  window.addEventListener('resize',function(){if(innerWidth>=900&&sb.classList.contains('open'))setOpen(false,false)},{passive:true});
+})();
+</script>
+<script>
+(function() {
+  'use strict';
+
+  const STORAGE_PREFIX = 'uart_iv_';
+
+  const IV_QUESTIONS = [
+    // UVM
+    {id:'uvm1', cat:'UVM', lvl:2, q:'¿En qué orden se ejecutan las UVM phases y cuáles son tasks?', a:'<p>Son <b>functions</b> (sin consumir tiempo): build, connect, end_of_elaboration, start_of_simulation, extract, check, report y final. Son <b>tasks</b>: run_phase y sus sub-phases (pre_reset, reset, post_reset, pre_configure, configure, post_configure, pre_main, main, post_main, pre_shutdown, shutdown, post_shutdown). run_phase corre en paralelo con las sub-phases, no en serie.</p>', trap:'Confundir phases function con tasks; ignorar que run_phase es concurrente con sub-phases.'},
+    {id:'uvm2', cat:'UVM', lvl:2, q:'¿Para qué sirven las objections y qué es drain time?', a:'<p>Las objections controlan el final de run_phase: un test se mantiene vivo mientras haya objections activas. raise_objection()/drop_objection() se usan para indicar actividad como sequences. Drain time es un retraso opcional tras drop para dejar que se complete tráfico en curso antes de terminar run_phase.</p>', trap:'Olvidar drop_objection() causa timeout; confundir objection con phase timeout genérico.'},
+    {id:'uvm3', cat:'UVM', lvl:2, q:'¿Diferencia entre type override y instance override en la factory?', a:'<p>type override reemplaza todas las instancias de una clase base por una derivada usando set_type_override_by_type(). instance override reemplaza una jerarquía específica usando set_inst_override_by_name(). El instance override tiene prioridad. Se llama antes de crear los componentes.</p>', trap:'Creer que el override por nombre se aplica globalmente; solo a la ruta indicada.'},
+    {id:'uvm4', cat:'UVM', lvl:3, q:'¿Cómo funciona config_db set/get y qué pasa si get devuelve 0? ¿Comodines y precedencia?', a:'<p>set escribe en una base de datos global con clave (contexto, inst_path, field). get busca el match más específico: un path exacto vence al wildcard; el set más cercano al target gana. Si get devuelve 0, significa que no se encontró el recurso; se debe usar el valor por defecto, no el 0 literal.</p>', trap:'Asumir que get con 0 es un valor válido; puede ser no encontrado.'},
+    {id:'uvm5', cat:'UVM', lvl:3, q:'¿Qué es un virtual sequencer y cómo se usa p_sequencer?', a:'<p>Un virtual sequencer coordina múltiples sequencers de agentes. El sequence que corre en él tiene m_sequencer de tipo base; se hace un cast con $cast(p_sequencer, m_sequencer) para acceder a handles de otros sequencers. Esto permite lanzar sequences hijas en paralelo.</p>', trap:'Olvidar que p_sequencer es de tipo derivado y requiere cast; m_sequencer es base.'},
+    {id:'uvm6', cat:'UVM', lvl:3, q:'¿Cómo se controla el acceso a un driver con lock y grab en sequences?', a:'<p>lock() da prioridad al sequence bloqueando el driver para los siguientes items, pero espera su turno. grab() toma el control inmediatamente con más prioridad. Ambos se liberan con unlock()/ungrab(). Son importantes para secuencias atómicas.</p>', trap:'Pensar que lock y grab son lo mismo; grab interrumpe la arbitración actual.'},
+    {id:'uvm7', cat:'UVM', lvl:1, q:'¿Cuál es la diferencia entre uvm_do y el par start_item/finish_item?', a:'<p>uvm_do es una macro que encapsula create_item, start_item, randomize y finish_item. start_item/finish_item permiten control manual: modificar constraints antes de randomize o implementar pre_do/post_do. Con uvm_do todo es automático.</p>', trap:'Creer que no se puede randomizar manualmente con uvm_do; se puede con pre_randomize.'},
+    {id:'uvm8', cat:'UVM', lvl:2, q:'¿Cómo se conecta un analysis port a múltiples subscribers?', a:'<p>Un analysis_port se conecta a uno o más analysis_imports/analysis_exports mediante connect(). A diferencia de TLM ports, no hay bloqueo: es broadcast. Todos los subscribers reciben la transacción sin consumirla.</p>', trap:'Usar un puerto TLM1 para uno a muchos; el analysis_port es broadcast.'},
+    {id:'uvm9', cat:'UVM', lvl:2, q:'¿Qué es un UVM callback y cuándo lo usarías?', a:'<p>Un callback permite inyectar comportamiento sin modificar la clase original. Se definen métodos virtuales en una clase callback y se registran en el componente. Los hooks en el código original llaman a uvm_do_callbacks(...). Útil para cambiar delays, inyectar errores o alterar comportamiento en tests sin tocar la base.</p>', trap:'Pensar que callbacks reemplazan a la factory; son complementarios.'},
+    {id:'uvm10', cat:'UVM', lvl:3, q:'¿Diferencia entre acceso frontdoor y backdoor en RAL?', a:'<p>Frontdoor usa secuencias en el bus para leer/escribir registros, como lo haría el software, verificando protocolo. Backdoor accede directamente a señales/registros RTL sin pasar por el bus; es más rápido para setup o verificación de reset. Se habilita indicando el hdl path (<code>uvm_reg::configure(blk, null, "ruta_hdl")</code> o <code>add_hdl_path_slice</code>) y se usa con <code>UVM_BACKDOOR</code> en read/write.</p>', trap:'Creer que backdoor es más realista; frontdoor es el que verifica protocolo.'},
+    {id:'uvm11', cat:'UVM', lvl:2, q:'¿Por qué print_topology debe estar en end_of_elaboration y no en build_phase?', a:'<p>En end_of_elaboration la jerarquía ya está completamente construida, con conexiones y configuraciones aplicadas. En build_phase la topología aún no está establecida (los componentes existen pero las conexiones no), por lo que imprimir sería incompleto.</p>', trap:'Ponerlo en build_phase y ver solo parte de la jerarquía.'},
+
+    // SystemVerilog
+    {id:'sv1', cat:'SystemVerilog', lvl:2, q:'Explica fork join, join_any, join_none y disable fork.', a:'<p>fork join espera que todos los procesos hijos terminen; join_any espera al primero; join_none no espera. disable fork mata a todos los procesos lanzados desde el fork actual, incluyendo subprocesos descendientes. Hay que tener cuidado con procesos que pueden quedar colgados.</p>', trap:'Pensar que disable fork solo mata hijos directos; mata todos los descendientes.'},
+    {id:'sv2', cat:'SystemVerilog', lvl:3, q:'¿Qué regiones SystemVerilog usas para evitar races?', a:'<p>Las regions principales son active, inactive, NBA, observed, reactive. Los bloques procedurales ejecutan en active, NBA para nonblocking assignments, observed para property/SVA. Los program blocks se ejecutan en reactive. Para testbench, usar program/clocking blocks para evitar races con DUT; en module, usar NBA o #0 con criterio.</p>', trap:'Pensar que un simple #1 resuelve todas las races; es mal estilo.'},
+    {id:'sv3', cat:'SystemVerilog', lvl:2, q:'¿Por qué se usa program block en testbenches?', a:'<p>program se ejecuta en la región reactive, después del DUT, evitando races al muestrear o aplicar estímulos. No puede ser instanciado en module, solo en top. Permite modelar testbench sin delays extraños. module se usa para DUT y hardware.</p>', trap:'Usar program con señales de clock y no entender regiones.'},
+    {id:'sv4', cat:'SystemVerilog', lvl:2, q:'¿Qué es el skew en un clocking block?', a:'<p>Input skew: cuánto tiempo antes del clock se muestrea; output skew: cuánto tiempo después del clock se aplica. Por defecto input #1step, output #0. Proporciona tiempos de setup/hold virtuales al testbench, eliminando races.</p>', trap:'No saber que el skew aplica a la vista del testbench, no retrasa las señales reales.'},
+    {id:'sv5', cat:'SystemVerilog', lvl:2, q:'Describe randc, solve before, dist y soft constraints.', a:'<p>randc: ciclo de valores sin repetir hasta agotar. solve before: controla el orden de resolución de variables para influir en la distribución. dist: distribución ponderada de valores. soft constraint: puede ser anulada por una constraint hard posterior; permiten defaults.</p>', trap:'Confundir dist con inside; o pensar que solve before cambia la semilla.'},
+    {id:'sv6', cat:'SystemVerilog', lvl:1, q:'¿Cómo se copia un objeto? ¿Qué hace $cast?', a:'<p>La asignación de objetos copia solo handles (shallow). Para deep copy hay que crear nuevo objeto y copiar campos. $cast hace cast entre clases derivadas/base: $cast(base, derived) siempre funciona; $cast(derived, base) verifica dinámicamente.</p>', trap:'Creer que el operador = copia contenido; copia handle.'},
+    {id:'sv7', cat:'SystemVerilog', lvl:1, q:'¿Qué son los métodos virtuales y por qué importan?', a:'<p>virtual permite override dinámico: si una función es virtual, la llamada se resuelve según el tipo real del objeto, no el tipo estático. Esencial para polimorfismo en UVM, por ejemplo al extender sequence_item y redefinir convert2string().</p>', trap:'Olvidar que no-virtual se resuelve en compilación.'},
+
+    // SVA
+    {id:'sva1', cat:'SVA', lvl:3, q:'¿Qué es vacuity en SVA?', a:'<p>Una propiedad se considera vacuous si el antecedente de una implicación nunca se cumple; la aserción pasa sin verificar nada. Con |-> vacuous pass si antecedent no ocurre. Herramientas pueden reportar vacuity. Se usa cover para saber si hubo intentos.</p>', trap:'Creer que una aserción que no se dispara es útil; hay que analizar vacuity.'},
+    {id:'sva2', cat:'SVA', lvl:1, q:'Diferencia entre |-> y |=>', a:'<p>|-> (overlapping implication): el consecuente se evalúa en el mismo ciclo que el antecedente. |=> (non-overlapping implication): el consecuente se evalúa un ciclo después. Se puede implementar |=> como ##1.</p>', trap:'No saber que |=> añade un ciclo.'},
+    {id:'sva3', cat:'SVA', lvl:2, q:'Explica $past, throughout y first_match.', a:'<p>$past(expr, n) devuelve valor de expr n ciclos atrás. throughout: la expresión debe mantenerse durante toda la secuencia. first_match: selecciona la primera coincidencia de una secuencia para evitar múltiples reportes.</p>', trap:'Usar $past sin saber que muestrea en preponed por defecto.'},
+    {id:'sva4', cat:'SVA', lvl:2, q:'¿Cómo samplean las propiedades SVA los valores?', a:'<p>En la región preponed, antes de cualquier evento de la simulación. Se muestrea el valor estable, no el valor cambiante en active. Para variables de testbench se usa $sampled o clocking block.</p>', trap:'Pensar que usa valor en active; puede causar falsos fallos.'},
+    {id:'sva5', cat:'SVA', lvl:1, q:'¿Diferencia entre assert, assume, cover en SVA?', a:'<p>assert verifica una propiedad. assume restringe las entradas para verificación formal o simulación (asume que la entrada cumple). cover mide si una secuencia ocurrió al menos una vez; es diferente de covergroup funcional.</p>', trap:'Confundir assume con assert; assume restringe el espacio de estados.'},
+
+    // Cobertura
+    {id:'cov1', cat:'Cobertura', lvl:2, q:'¿Cómo se activa un covergroup: sample() vs event?', a:'<p>Con sample() se dispara manualmente. Con @event se dispara automáticamente cuando ocurre el evento. Se recomienda en sample() tomar una snapshot coherente de las variables.</p>', trap:'Llamar sample() desde múltiples lugares causando muestreo redundante.'},
+    {id:'cov2', cat:'Cobertura', lvl:2, q:'¿Qué hacen ignore_bins e illegal_bins?', a:'<p>ignore_bins excluye valores del cálculo de cobertura; aunque aparezcan, no se cuentan. illegal_bins define valores ilegales: si se muestrea, se reporta error y aborta simulación (o se maneja según tool). Útil para detectar estímulos prohibidos.</p>', trap:'Pensar que illegal_bins solo excluye; en realidad marca error.'},
+    {id:'cov3', cat:'Cobertura', lvl:3, q:'¿Cómo controlas la explosión de cross bins?', a:'<p>Usar binsof, intersect, ignore_bins/illegal_bins en cross, o limitar los bins de las variables. Ejemplo: cross a, b { ignore_bins b_ign = binsof(b) intersect {0}; }. También se pueden agrupar valores.</p>', trap:'No planificar y generar miles de bins inalcanzables.'},
+    {id:'cov4', cat:'Cobertura', lvl:2, q:'¿Cobertura 100% garantiza que el DUT es correcto?', a:'<p>No. La cobertura mide que puntos del plan fueron estimulados, no que los checkers detectaron errores. Puede haber bugs ocultos en casos no cubiertos por checkers. Los holes son bins no golpeados, requieren análisis de testbench o plan.</p>', trap:'Confundir cobertura funcional con verificación completa.'},
+
+    // Protocolo UART (corner cases)
+    {id:'uart1', cat:'Protocolo UART', lvl:3, q:'¿Cuál es el presupuesto de error de baud combinado para este DUT y por qué?', a:'<p>La muestra del stop bit ocurre a 9.5 bit-times desde el flanco de start. Si TX+RX acumulan desviación, el error máximo permitido es 0.5/9.5 ≈ 5.26% combinado, idealmente ±2.5% por lado. Con sincronizador de 2 ciclos y divisor entero, se reduce. En la práctica se diseña para <3% combinado.</p>', trap:'Olvidar que el stop bit se muestrea a 9.5, no a 10; usar 0.5/10=5%.'},
+    {id:'uart2', cat:'Protocolo UART', lvl:2, q:'Calcula el divisor y error para 50 MHz, 115200 baud.', a:'<p>CLKS_PER_BIT = 50e6 / 115200 = 434.027... Se redondea a 434. La velocidad real = 50e6 / 434 = 115207.37 baud. Error relativo = (115207.37 - 115200)/115200 * 100 ≈ +0.0064%. Es despreciable.</p>', trap:'Redondear a 435 da más error: 50e6/435 = 114942.53 baud, es decir −0.22%.'},
+    {id:'uart3', cat:'Protocolo UART', lvl:2, q:'¿Cómo rechaza este DUT un glitch bajo en rxd?', a:'<p>En RX_START, se espera rx_cnt == (CLKS_PER_BIT/2)-1. Si a mitad del bit de start la línea es alta, se descarta como falso start y vuelve a RX_IDLE. El glitch debe durar menos de la mitad del bit para ser filtrado.</p>', trap:'Pensar que cualquier flanco bajo inicia una trama; este DUT valida a mitad.'},
+    {id:'uart4', cat:'Protocolo UART', lvl:3, q:'¿Qué pasa si la línea permanece baja más de una trama (break)?', a:'<p>El receptor empieza con start=0, lee 8 datos = 0, y muestrea stop=0 -> rx_frame_err pulsa. Luego entra en RX_RECOVER y espera a que rxd_s2 sea alto antes de buscar otra trama, evitando generar una cascada de frames erróneos. El frame recibido sería 0x00 con error.</p>', trap:'Olvidar que después del frame error debe esperar idle alto; de lo contrario se repite.'},
+    {id:'uart5', cat:'Protocolo UART', lvl:3, q:'¿Qué ocurre con back-to-back frames y un TX ligeramente rápido?', a:'<p>El RX debe re-armarse justo después de muestrear el stop bit. En este DUT tras muestrear stop correcto, vuelve a RX_IDLE en el siguiente ciclo, listo para detectar un nuevo start si el TX inicia inmediatamente. Si el TX es rápido, el bit de stop puede acortarse; el RX muestrea a 9.5 y aún hay margen.</p>', trap:'Olvidar que el retorno a IDLE es inmediato; no hay recovery time.'},
+    {id:'uart6', cat:'Protocolo UART', lvl:2, q:'¿Cómo afecta el sincronizador de 2 flops a la posición de muestreo?', a:'<p>rxd_s2 tiene 2 ciclos de retraso, pero la FSM usa rxd_s2 tanto para detectar el start como para muestrear, así que el retardo se cancela: el punto de muestreo respecto al bit del pin sigue en su centro nominal. Lo que sí cuesta: el pin es asíncrono al clk, así que la detección del start tiene ±1 ciclo de incertidumbre (más la latencia hasta rx_valid). Con CLKS_PER_BIT=16 eso es ≈6% de un bit; con 4 es 25% y pesa mucho en el presupuesto de baud.</p>', trap:'Restar 2 ciclos al presupuesto de baud por el sincronizador; lo que se pierde es resolución (±1 ciclo) al detectar el start.'},
+    {id:'uart7', cat:'Protocolo UART', lvl:3, q:'Este DUT no tiene overrun flag. ¿Qué escenario lo causa y cómo lo agregarías?', a:'<p>rx_valid es un pulso de 1 ciclo y rx_data se mantiene hasta la siguiente trama buena. Si el host no captura rx_data a tiempo, la siguiente trama lo sobrescribe sin aviso: no hay flag de overrun. Lo añadiría con un rx_overrun (se activa si llega una trama nueva antes de que el host confirme con un rx_ack) o con un FIFO de recepción.</p>', trap:'Asumir que el DUT maneja overrun; no lo hace.'},
+    {id:'uart8', cat:'Protocolo UART', lvl:2, q:'¿Qué sucede al aplicar reset asíncrono en medio de una trama?', a:'<p>rst_n negado resetea registros TX/RX inmediatamente. tx_state <= TX_IDLE, txd <= 1, rx_state <= RX_IDLE, rx_data/valid/err <= 0. Cualquier transacción en curso se aborta; no hay cleanup. En verificación, hay que comprobar que no queden efectos residuales.</p>', trap:'No revisar que txd vuelve a idle y que la trama no continúa después del reset.'},
+    {id:'uart9', cat:'Protocolo UART', lvl:2, q:'¿Qué pasa si rxd está X o undriven al salir de reset?', a:'<p>rxd_s1/s2 se inicializan a 1 durante el reset, pero si rxd es X al salir de reset esa X pasa a rxd_s1 en 1 ciclo y a rxd_s2 en 2. En la FSM, <code>if (!rxd_s2)</code> con X se evalúa como falso (X-optimism): no arranca un start falso, y eso oculta el problema. Si rxd está en Z (sin driver), la línea flota: el TB debe modelar el pull-up (<code>pullup</code> o asignar 1 por defecto).</p>', trap:'Creer que el reset protege de X para siempre: solo fija el valor inicial. Añade <code>assert property (!$isunknown(rxd))</code> tras el reset.'},
+    {id:'uart10', cat:'Protocolo UART', lvl:1, q:'¿Cómo maneja el DUT tx_valid alto continuo?', a:'<p>tx_ready solo está alto en TX_IDLE. Si tx_valid está alto y tx_ready alto, el dato se carga y tx_ready baja durante la trama. Al volver a TX_IDLE, tx_ready se re-afirma y si tx_valid sigue alto, se aceptará el próximo dato en el siguiente ciclo. Debe asegurarse que tx_data cambie después del handshake.</p>', trap:'Olvidar que tx_ready se re-afirma y puede aceptar datos back-to-back.'},
+    {id:'uart11', cat:'Protocolo UART', lvl:2, q:'¿Cómo extenderías este DUT para soportar parity, 2 stop bits o 9 data bits?', a:'<p>Agregar parámetros de configuración y ajustar FSM. Para parity, añadir estado TX_PARITY calculando paridad, y en RX verificar. Para 2 stop bits, repetir TX_STOP o esperar dos intervalos en RX_STOP. Para 9 bits, ampliar tx_data a 9 bits y ajustar contadores.</p>', trap:'Subestimar el impacto en el modelo y cobertura.'},
+    {id:'uart12', cat:'Protocolo UART', lvl:2, q:'¿Qué es el sampling con mayoría en oversampling 16x y cómo se relaciona?', a:'<p>En lugar de muestrear solo en el medio (ciclo 8), se toman muestras en ciclos 7,8,9 y se vota la mayoría. Mejora inmunidad al ruido y reduce sensibilidad a jitter. Este DUT usa muestreo único en medio bit; un diseño más robusto usaría majority.</p>', trap:'Decir que este DUT ya usa majority; no, usa single sample.'},
+    {id:'uart13', cat:'Protocolo UART', lvl:2, q:'¿Cómo verificarías la tolerancia de baudrate con el driver del TB?', a:'<p>Define un parámetro en uart_rx_driver para escalar el periodo de bit (p.ej. bit_time_ns * (1 + skew/100.0)). Ejecuta regresiones con skew -5% a +5% y verifica que el RX decodifica bien los datos. Observa que fuera del presupuesto falle en stop bit o datos.</p>', trap:'No incluir skew en el driver y solo probar baud nominal.'},
+    {id:'uart14', cat:'Protocolo UART', lvl:3, q:'Diseña un scoreboard para TX y RX incluyendo framing errors.', a:'<p>Para TX, guarda en tx_expected_q los bytes enviados (host->driver) y en tx_line_q los bytes muestreados de txd por monitor; compara orden. Para RX, rx_injected_q guarda bytes de línea inyectados; rx_out_q guarda rx_data/valid del monitor; compara secuencia. Si se inyecta bad_stop, espera rx_frame_err en lugar de rx_valid y ese frame no debe ir a rx_data_q.</p>', trap:'Mezclar colas y no manejar frames con error como salida distinta.'},
+
+    // Debug
+    {id:'dbg1', cat:'Debug', lvl:2, q:'Explica cómo depurar un fallo aleatorio con seed.', a:'<p>Registrar la seed de la regresión. Reejecutar con misma seed para reproducir. Añadir logs en monitores/scoreboard para encontrar la primera divergencia entre esperado y real. Usar herramientas de debug para trazar la transacción hasta el fallo.</p>', trap:'Olvidar registrar seeds; sin reproducción es casi imposible.'},
+    {id:'dbg2', cat:'Debug', lvl:2, q:'¿Cómo decides si un fallo es del testbench o del RTL?', a:'<p>Verificar el punto de comparación: ¿el modelo de referencia es correcto? ¿La señal es legítima según spec? Aislar el fallo a un componente: revisar formas de onda, aserciones, y ejecutar tests dirigidos. Si el RTL viola una aserción de protocolo o produce dato incorrecto, es RTL; si el estímulo no cumple timing, es TB.</p>', trap:'Asumir que el fallo es RTL sin revisar modelo TB.'},
+    {id:'dbg3', cat:'Debug', lvl:3, q:'¿Qué es X-optimism y cómo lo evitas?', a:'<p>X-optimism ocurre cuando una expresión que involucra X se evalúa como si el valor fuera conocido, dando un resultado definido y pasando chequeos falsos. En simulación, usar xprop o $isunknown() en checkers para detectar y reportar X. Verificadores deben fallar si esperan datos y ven X.</p>', trap:'No detectar X en datos y dar pass incorrecto.'},
+
+    // Diseño de TB
+    {id:'tb1', cat:'Diseño de TB', lvl:2, q:'Describe la arquitectura UVM típica para este UART.', a:'<p>uart_if con clk, rst_n, tx/rx signals. uart_tx_agent: driver, monitor; uart_rx_agent: driver, monitor. uart_env contiene ambos agentes, scoreboard, coverage. Sequences en virtual sequencer coordinan TX y RX. Test configura config_db, registra sequences y corre.</p>', trap:'No separar RX y TX agents; acoplar monitores y drivers.'},
+    {id:'tb2', cat:'Diseño de TB', lvl:3, q:'¿Cómo inyectarías glitches en rxd desde una sequence UVM?', a:'<p>No desde sequence directamente, sino usando un uart_rx_driver con opciones de transacción: glitch y bad_stop. La secuencia crea transacciones con flags; el driver implementa bit-banging de rxd, generando un glitch bajo de duración menor a medio bit antes del frame, o stop bajo.</p>', trap:'Intentar manipular señales directamente desde sequence, rompiendo encapsulamiento.'},
+    {id:'tb3', cat:'Diseño de TB', lvl:2, q:'¿Cómo monitorea el TB los caminos TX y RX?', a:'<p>uart_tx_monitor observa txd y produce transacciones de línea y de host (tx_data, tx_valid) vía analysis ports. uart_rx_monitor observa rxd y las salidas rx_data/rx_valid/rx_frame_err, produciendo transacciones de línea inyectadas y de salida. Scoreboard compara host vs línea para TX, línea inyectada vs salidas para RX.</p>', trap:'Monitorear solo un lado y no poder comparar.'},
+
+    // Pizarra
+    {id:'piz1', cat:'Pizarra', lvl:3, q:'Escribe una aserción SVA que verifique: start bit bajo seguido de 8 data bits y stop alto, con CLKS_PER_BIT como parámetro.', a:'<p>Un simple <code>$fell(rxd)</code> también dispara en cada flanco de bajada de un dato, así que se necesita una bandera <code>busy</code> que solo permita disparar desde idle. La propiedad exige start bajo durante CLKS_PER_BIT ciclos, 8 intervalos de CLKS_PER_BIT ciclos con el dato estable (0 o 1) y stop alto CLKS_PER_BIT ciclos. Supone un transmisor con el mismo CLKS_PER_BIT (sin deriva).</p>', trap:'Disparar con <code>$fell(rxd)</code> a secas (falla en datos 1→0) y olvidar la estabilidad dentro de cada intervalo. Verifica el off-by-one en simulación.', code:'logic busy;\nint unsigned cnt;\nalways_ff @(posedge clk or negedge rst_n)\n  if (!rst_n) begin busy <= 1\'b0; cnt <= 0; end\n  else if (!busy && $fell(rxd)) begin busy <= 1\'b1; cnt <= 1; end\n  else if (busy) begin\n    if (cnt == 10*CLKS_PER_BIT-1) busy <= 1\'b0;\n    else cnt <= cnt + 1;\n  end\n\nsequence s_bit;  // dato estable durante su intervalo\n  (rxd[*CLKS_PER_BIT]) or ((!rxd)[*CLKS_PER_BIT]);\nendsequence\n\nproperty uart_frame_protocol;\n  @(posedge clk) disable iff (!rst_n)\n    (!busy && $fell(rxd)) |->\n      (!rxd)[*CLKS_PER_BIT] ##1 s_bit[*8] ##1 rxd[*CLKS_PER_BIT];\nendproperty\na_frame: assert property (uart_frame_protocol);'},
+    {id:'piz2', cat:'Pizarra', lvl:3, q:'Escribe un monitor UART que muestree a mitad de bit con rechazo de glitches.', a:'<p>Espera el flanco de bajada de rxd, avanza medio bit y, si la línea ya no está baja, lo descarta como glitch. Luego muestrea 8 bits a intervalos completos y el stop. El stop bajo es framing error; en ese caso hay que esperar a que la línea vuelva a idle. Debe ver <code>rxd</code> como señal del scope (interface/módulo), no como argumento de tarea: un argumento de entrada es una copia y <code>@(negedge rxd)</code> nunca lo vería cambiar.</p>', trap:'Pasar rxd como <code>input</code> de la tarea, o hacer <code>@(posedge rxd)</code> incondicional tras un stop bueno (la línea ya está alta y se desincroniza con la trama siguiente).', code:'localparam realtime BIT_TIME = 8680ns; // 115200 baud\n\ntask automatic monitor_uart_rx();\n  logic [7:0] data;\n  forever begin\n    @(negedge rxd);\n    #(BIT_TIME/2);\n    if (rxd !== 1\'b0) continue;      // glitch: descartar\n    for (int i = 0; i < 8; i++) begin\n      #(BIT_TIME);\n      data[i] = rxd;                 // LSB primero, a mitad de bit\n    end\n    #(BIT_TIME);                     // muestra el stop\n    report_frame(data, rxd === 1\'b1);  // ok=0 -> framing error\n    if (rxd !== 1\'b1) @(posedge rxd);  // tras stop bajo, esperar idle\n  end\nendtask'},
+    {id:'piz3', cat:'Pizarra', lvl:3, q:'Escribe un scoreboard con queues que compare TX y RX incluyendo frames con framing error.', a:'<p>Cada trama inyectada produce exactamente una salida del DUT (rx_valid o rx_frame_err), así que una sola cola de tramas esperadas (data + bad_stop) mantiene todo alineado: al llegar la salida se saca la esperada; si <code>bad_stop</code> se exige framing error, si no, dato correcto. Los <code>uvm_analysis_imp_decl</code> van a nivel de paquete (fuera de la clase) y los imps se construyen en <code>new()</code>. Las tramas con glitch no producen salida: no deben entrar a la cola.</p>', trap:'Separar colas de datos y de errores: la trama con stop malo consume una entrada de datos aunque no produzca rx_valid, y todo lo siguiente se desalinea.', code:'// a nivel de paquete, FUERA de la clase\n`uvm_analysis_imp_decl(_tx_host)\n`uvm_analysis_imp_decl(_tx_line)\n`uvm_analysis_imp_decl(_rx_inject)\n`uvm_analysis_imp_decl(_rx_out)\n\nclass uart_scoreboard extends uvm_scoreboard;\n  `uvm_component_utils(uart_scoreboard)\n\n  uvm_analysis_imp_tx_host   #(uart_tx_item,     uart_scoreboard) tx_host_imp;\n  uvm_analysis_imp_tx_line   #(uart_line_item,   uart_scoreboard) tx_line_imp;\n  uvm_analysis_imp_rx_inject #(uart_line_item,   uart_scoreboard) rx_inject_imp;\n  uvm_analysis_imp_rx_out    #(uart_rx_out_item, uart_scoreboard) rx_out_imp;\n\n  bit [7:0]      tx_host_q[$], tx_line_q[$];\n  uart_line_item rx_exp_q[$];   // una entrada por trama inyectada\n\n  function new(string name, uvm_component parent);\n    super.new(name, parent);\n    tx_host_imp   = new("tx_host_imp", this);\n    tx_line_imp   = new("tx_line_imp", this);\n    rx_inject_imp = new("rx_inject_imp", this);\n    rx_out_imp    = new("rx_out_imp", this);\n  endfunction\n\n  function void write_tx_host(uart_tx_item item);\n    tx_host_q.push_back(item.data);\n    compare_tx();\n  endfunction\n\n  function void write_tx_line(uart_line_item item);\n    tx_line_q.push_back(item.data);\n    compare_tx();\n  endfunction\n\n  function void compare_tx();\n    bit [7:0] h, l;\n    while (tx_host_q.size() > 0 && tx_line_q.size() > 0) begin\n      h = tx_host_q.pop_front();\n      l = tx_line_q.pop_front();\n      if (h !== l) `uvm_error("SCB", $sformatf("TX mismatch: host=%0h linea=%0h", h, l));\n    end\n  endfunction\n\n  function void write_rx_inject(uart_line_item item);\n    rx_exp_q.push_back(item);\n  endfunction\n\n  function void write_rx_out(uart_rx_out_item item);\n    uart_line_item exp;\n    if (rx_exp_q.size() == 0) begin\n      `uvm_error("SCB", "Salida RX sin trama esperada");\n      return;\n    end\n    exp = rx_exp_q.pop_front();\n    if (exp.bad_stop) begin\n      if (!item.frame_err) `uvm_error("SCB", "Se esperaba framing error");\n    end else if (item.frame_err)\n      `uvm_error("SCB", "Framing error inesperado");\n    else if (item.data !== exp.data)\n      `uvm_error("SCB", $sformatf("RX mismatch: got=%0h exp=%0h", item.data, exp.data));\n  endfunction\n\n  function void check_phase(uvm_phase phase);\n    if (rx_exp_q.size() != 0)\n      `uvm_error("SCB", $sformatf("%0d tramas RX sin salida", rx_exp_q.size()));\n  endfunction\nendclass'},
+    {id:'piz4', cat:'Pizarra', lvl:3, q:'Escribe una constraint que produzca un divisor CLKS_PER_BIT con error de baud dentro de ±X% usando dist y solve-before.', a:'<p>clks_per_bit es el redondeo de clk_freq/baud_rate y el error relativo real debe quedar dentro de ±skew_percent. Se escribe sin divisiones que trunquen y en 64 bits para que <code>x*100</code> no desborde: <code>real*100 &lt;= baud*(100+skew)</code> y <code>real*100 &gt;= baud*(100-skew)</code>. El <code>dist</code> favorece bauds comunes; <code>solve clk_freq before baud_rate</code> cambia la distribución (no la solución). Combinaciones imposibles (clk bajo, baud alto) el solver simplemente las descarta.</p>', trap:'Usar real en constraints (no portable) o dividir en enteros: la división trunca y el rango <code>[-x:x]</code> con x=0 o negativo queda vacío o mal.', code:'class uart_baud_cfg extends uvm_sequence_item;\n  `uvm_object_utils(uart_baud_cfg)\n  rand int unsigned clk_freq;      // Hz\n  rand int unsigned baud_rate;     // baud\n  rand int unsigned clks_per_bit;\n  rand int unsigned skew_percent;  // tolerancia 0..5 (%)\n\n  constraint ranges_c {\n    clk_freq     inside {[1_000_000:100_000_000]};\n    baud_rate    inside {[9600:115200]};\n    skew_percent inside {[0:5]};\n  }\n\n  constraint div_round_c {\n    clks_per_bit == (clk_freq + baud_rate/2) / baud_rate;\n  }\n\n  constraint baud_error_c {\n    64\'(clk_freq / clks_per_bit) * 100 <= 64\'(baud_rate) * (100 + skew_percent);\n    64\'(clk_freq / clks_per_bit) * 100 >= 64\'(baud_rate) * (100 - skew_percent);\n  }\n\n  constraint order_c { solve clk_freq before baud_rate; }\n\n  constraint dist_c {\n    baud_rate dist {9600:=1, 19200:=2, 38400:=2, 57600:=3, 115200:=5};\n  }\n\n  function new(string name = "uart_baud_cfg");\n    super.new(name);\n  endfunction\nendclass'}
+  ];
+
+  const IV_CHECKLIST = [
+    {id:'chk1', text:'Muestreo del stop bit a 9.5 bit-times.', desc:'Verificar con assertion $past que rx_frame_err no ocurre cuando el stop es alto en el instante esperado.'},
+    {id:'chk2', text:'Error de baud combinado < 5.26%.', desc:'Test con skew ±2%, ±3%, ±5% en driver RX y comprobar pass/fail según presupuesto.'},
+    {id:'chk3', text:'Redondeo del divisor entero.', desc:'Simular con 50MHz/115200 y comparar divisor 434, error real <0.01%.'},
+    {id:'chk4', text:'Rechazo de glitch en start.', desc:'Inyectar glitch bajo < (CLKS_PER_BIT/2) ciclos antes de un frame válido; rx_data debe ser correcto y no haber rx_frame_err.'},
+    {id:'chk5', text:'Condición de break: línea baja > 1 trama.', desc:'Inyectar rxd=0 prolongado; esperar 0x00 + rx_frame_err y que RX_RECOVER espere idle alto sin generar frames extra.'},
+    {id:'chk6', text:'Back-to-back frames con stop de 1 bit.', desc:'Enviar dos bytes sin gap; asegurar que el segundo se decodifica bien y rx_valid se activa dos veces.'},
+    {id:'chk7', text:'TX ligeramente rápido (skew +2%).', desc:'Verificar que el stop bit sigue siendo muestreado alto y no hay frame error.'},
+    {id:'chk8', text:'Latencia del sincronizador de 2 flops.', desc:'Con CLKS_PER_BIT=4, evaluar margen de muestreo; con CLKS_PER_BIT grande es despreciable.'},
+    {id:'chk9', text:'Ausencia de overrun flag.', desc:'Generar rx_valid y no leer; enviar otra trama; confirmar que rx_data se sobrescribe y no hay error (posible mejora).'},
+    {id:'chk10', text:'Reset en medio de trama.', desc:'Aplicar rst_n=0 durante TX o RX; verificar que tx_state y rx_state vuelven a IDLE y txd=1.'},
+    {id:'chk11', text:'rxd X o undriven al salir de reset.', desc:'En TB, inicializar rxd a 1 después de reset; comprobar que no hay frames espurios.'},
+    {id:'chk12', text:'tx_valid alto continuo.', desc:'Mantener tx_valid=1 y cambiar tx_data después de cada handshake; verificar back-to-back correctos.'},
+    {id:'chk13', text:'Extensiones de protocolo (parity, 2 stop, 9 bits).', desc:'Planificar cómo modificar FSM y actualizar cobertura; no implementado en DUT actual.'},
+    {id:'chk14', text:'Alternativa de majority vote 7-8-9.', desc:'Evaluar si el DUT usa single sample y si es robusto; proponer mejora con mayoría.'},
+    {id:'chk15', text:'Verificación con driver con skew ajustable.', desc:'Asegurar que el driver RX acepte un parámetro de skew para barrer -5% a +5%.'},
+    {id:'chk16', text:'Scoreboard con colas separadas para frame_err.', desc:'Comparar secuencias TX y RX; los frames con bad_stop deben ir a cola de errores.'}
+  ];
+
+  function safeGet(key, fallback) {
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function safeSet(key, val) {
+    try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(val)); } catch (e) { /* ignore */ }
+  }
+
+  const el = {
+    flashcards: document.getElementById('ivFlashcards'),
+    masteredCount: document.getElementById('ivMasteredCount'),
+    totalCount: document.getElementById('ivTotalCount'),
+    progressFill: document.getElementById('ivProgressFill'),
+    search: document.getElementById('ivSearch'),
+    checkList: document.getElementById('ivChecklist'),
+    simulaBtn: document.getElementById('ivSimulaBtn'),
+    simulaPanel: document.getElementById('ivSimulaPanel'),
+    simulaQuestion: document.getElementById('ivSimulaQuestion'),
+    simulaTimer: document.getElementById('ivSimulaTimer'),
+    simulaReveal: document.getElementById('ivSimulaReveal'),
+    simulaKnown: document.getElementById('ivSimulaKnown'),
+    simulaUnknown: document.getElementById('ivSimulaUnknown'),
+    simulaAnswer: document.getElementById('ivSimulaAnswer')
+  };
+
+  let currentCat = 'all';
+  let currentLvl = 'all';
+  let searchTerm = '';
+  let mastered = safeGet('mastered', {});
+  let checklistState = safeGet('checklist', {});
+  let simTimer = null;
+  let simQuestion = null;
+  let simSeconds = 90;
+
+  function totalQuestions() { return IV_QUESTIONS.length; }
+  function masteredCount() {
+    return IV_QUESTIONS.filter(q => mastered[q.id] === true).length;
+  }
+  function updateProgress() {
+    const total = totalQuestions();
+    const count = masteredCount();
+    el.masteredCount.textContent = count;
+    el.totalCount.textContent = total;
+    const pct = total === 0 ? 0 : (count / total) * 100;
+    el.progressFill.style.width = pct + '%';
+    el.progressFill.parentElement.setAttribute('aria-valuenow', Math.round(pct));
+  }
+
+  function filteredQuestions() {
+    return IV_QUESTIONS.filter(q => {
+      if (currentCat !== 'all' && q.cat !== currentCat) return false;
+      if (currentLvl !== 'all' && q.lvl !== parseInt(currentLvl, 10)) return false;
+      if (searchTerm && !(q.q.toLowerCase().includes(searchTerm) + ' ' + q.a.toLowerCase()).includes(searchTerm)) return false;
+      return true;
+    });
+  }
+
+  function renderCards() {
+    const list = filteredQuestions();
+    el.flashcards.innerHTML = '';
+    if (list.length === 0) {
+      el.flashcards.innerHTML = '<p class="iv-answer-fallback">No hay preguntas con esos filtros.</p>';
+      return;
+    }
+    list.forEach(q => {
+      const card = document.createElement('article');
+      card.className = 'iv-card';
+      card.dataset.id = q.id;
+
+      const header = document.createElement('div');
+      header.className = 'iv-card-header';
+      const cat = document.createElement('span');
+      cat.className = 'iv-card-cat';
+      cat.textContent = q.cat;
+      const lvl = document.createElement('span');
+      lvl.className = 'iv-card-lvl iv-lvl-' + q.lvl;
+      lvl.textContent = q.lvl === 1 ? 'Junior' : q.lvl === 2 ? 'Intermedio' : 'Senior';
+      header.appendChild(cat);
+      header.appendChild(lvl);
+
+      const question = document.createElement('div');
+      question.className = 'iv-card-question';
+      question.innerHTML = '<p>' + q.q + '</p>';
+
+      const revealBtn = document.createElement('button');
+      revealBtn.className = 'iv-btn';
+      revealBtn.textContent = 'Revelar respuesta';
+      revealBtn.setAttribute('aria-expanded', 'false');
+      revealBtn.setAttribute('aria-controls', 'answer-' + q.id);
+
+      const answerDiv = document.createElement('div');
+      answerDiv.className = 'iv-card-answer';
+      answerDiv.id = 'answer-' + q.id;
+      answerDiv.hidden = true;
+      answerDiv.innerHTML = q.a + (q.code ? '<pre><code>' + escapeHtml(q.code) + '</code></pre>' : '');
+
+      const footer = document.createElement('div');
+      footer.className = 'iv-card-footer';
+      const knownBtn = document.createElement('button');
+      knownBtn.className = 'iv-btn-known';
+      knownBtn.textContent = mastered[q.id] ? '✅ Dominada' : 'Lo sé';
+      knownBtn.disabled = mastered[q.id] === true;
+      knownBtn.addEventListener('click', () => {
+        mastered[q.id] = true;
+        safeSet('mastered', mastered);
+        updateProgress();
+        renderCards();
+      });
+      const repairBtn = document.createElement('button');
+      repairBtn.className = 'iv-btn-repair';
+      repairBtn.textContent = 'Repasar';
+      repairBtn.disabled = mastered[q.id] !== true;
+      repairBtn.addEventListener('click', () => {
+        delete mastered[q.id];
+        safeSet('mastered', mastered);
+        updateProgress();
+        renderCards();
+      });
+      footer.appendChild(knownBtn);
+      footer.appendChild(repairBtn);
+
+      revealBtn.addEventListener('click', () => {
+        const hidden = answerDiv.hidden;
+        answerDiv.hidden = !hidden;
+        revealBtn.setAttribute('aria-expanded', String(hidden));
+        revealBtn.textContent = hidden ? 'Ocultar respuesta' : 'Revelar respuesta';
+      });
+
+      card.appendChild(header);
+      card.appendChild(question);
+      card.appendChild(revealBtn);
+      card.appendChild(answerDiv);
+      card.appendChild(footer);
+      el.flashcards.appendChild(card);
+    });
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function bindFilters() {
+    document.querySelectorAll('.iv-chip[data-cat]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentCat = btn.dataset.cat;
+        document.querySelectorAll('.iv-chip[data-cat]').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+        renderCards();
+      });
+    });
+    document.querySelectorAll('.iv-chip[data-lvl]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentLvl = btn.dataset.lvl;
+        document.querySelectorAll('.iv-chip[data-lvl]').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+        renderCards();
+      });
+    });
+    el.search.addEventListener('input', () => {
+      searchTerm = el.search.value.trim().toLowerCase();
+      renderCards();
+    });
+  }
+
+  function renderChecklist() {
+    el.checkList.innerHTML = '';
+    IV_CHECKLIST.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'iv-checklist-item' + (checklistState[item.id] ? ' checked' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'iv-' + item.id;
+      cb.checked = checklistState[item.id] === true;
+      cb.addEventListener('change', () => {
+        checklistState[item.id] = cb.checked;
+        safeSet('checklist', checklistState);
+        li.classList.toggle('checked', cb.checked);
+      });
+      const label = document.createElement('label');
+      label.htmlFor = 'iv-' + item.id;
+      label.innerHTML = item.text + '<span class="iv-checklist-desc">' + item.desc + '</span>';
+      li.appendChild(cb);
+      li.appendChild(label);
+      el.checkList.appendChild(li);
+    });
+  }
+
+  function startSimulacro() {
+    const unmastered = IV_QUESTIONS.filter(q => mastered[q.id] !== true);
+    if (unmastered.length === 0) {
+      alert('¡Has dominado todas las preguntas!');
+      return;
+    }
+    simQuestion = unmastered[Math.floor(Math.random() * unmastered.length)];
+    el.simulaPanel.hidden = false;
+    el.simulaBtn.setAttribute('aria-expanded', 'true');
+    el.simulaQuestion.textContent = simQuestion.q;
+    el.simulaAnswer.hidden = true;
+    el.simulaAnswer.innerHTML = simQuestion.a + (simQuestion.code ? '<pre><code>' + escapeHtml(simQuestion.code) + '</code></pre>' : '');
+    el.simulaReveal.disabled = false;
+    el.simulaKnown.disabled = true;
+    el.simulaUnknown.disabled = true;
+    simSeconds = 90;
+    el.simulaTimer.textContent = simSeconds + ' s';
+    if (simTimer) clearInterval(simTimer);
+    simTimer = setInterval(() => {
+      simSeconds--;
+      el.simulaTimer.textContent = simSeconds + ' s';
+      if (simSeconds <= 0) {
+        clearInterval(simTimer);
+        simTimer = null;
+        el.simulaReveal.disabled = false;
+        revealSimula();
+      }
+    }, 1000);
+  }
+
+  function revealSimula() {
+    el.simulaAnswer.hidden = false;
+    el.simulaReveal.disabled = true;
+    el.simulaKnown.disabled = false;
+    el.simulaUnknown.disabled = false;
+    if (simTimer) { clearInterval(simTimer); simTimer = null; }
+  }
+
+  function gradeSimula(known) {
+    if (known) {
+      mastered[simQuestion.id] = true;
+      safeSet('mastered', mastered);
+    }
+    el.simulaPanel.hidden = true;
+    el.simulaBtn.setAttribute('aria-expanded', 'false');
+    updateProgress();
+    renderCards();
+  }
+
+  el.simulaBtn.addEventListener('click', () => {
+    if (el.simulaPanel.hidden) {
+      startSimulacro();
+    } else {
+      el.simulaPanel.hidden = true;
+      el.simulaBtn.setAttribute('aria-expanded', 'false');
+      if (simTimer) { clearInterval(simTimer); simTimer = null; }
+    }
+  });
+
+  el.simulaReveal.addEventListener('click', revealSimula);
+  el.simulaKnown.addEventListener('click', () => gradeSimula(true));
+  el.simulaUnknown.addEventListener('click', () => gradeSimula(false));
+
+  // Init
+  updateProgress();
+  renderCards();
+  bindFilters();
+  renderChecklist();
+})();
+</script>
+</body>
+</html>

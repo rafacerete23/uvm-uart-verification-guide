@@ -59,8 +59,8 @@ class uart_tx_test extends uart_base_test;
     random_seq = uart_tx_random_seq::type_id::create("random_seq");
     backtoback_seq = uart_tx_backtoback_seq::type_id::create("backtoback_seq");
 
-    random_seq.num_items = 50;
-    backtoback_seq.num_items = 20;
+    random_seq.n = 50;
+    backtoback_seq.n = 20;
 
     corner_seq.start(env.tx_agent.sequencer);
     random_seq.start(env.tx_agent.sequencer);
@@ -82,8 +82,8 @@ class uart_rx_test extends uart_base_test;
     good_seq = uart_rx_good_only_seq::type_id::create("good_seq");
     random_seq = uart_rx_random_seq::type_id::create("random_seq");
 
-    good_seq.num_items = 50;
-    random_seq.num_items = 50;
+    good_seq.n = 50;
+    random_seq.n = 50;
 
     good_seq.start(env.rx_agent.sequencer);
     random_seq.start(env.rx_agent.sequencer);
@@ -104,7 +104,7 @@ class uart_error_test extends uart_base_test;
     error_seq = uart_rx_error_seq::type_id::create("error_seq");
     tx_seq = uart_tx_random_seq::type_id::create("tx_seq");
 
-    tx_seq.num_items = 50;
+    tx_seq.n = 50;
 
     fork
       error_seq.start(env.rx_agent.sequencer);
@@ -141,8 +141,8 @@ class uart_full_duplex_test extends uart_base_test;
     tx_seq = uart_tx_random_seq::type_id::create("tx_seq");
     rx_seq = uart_rx_good_only_seq::type_id::create("rx_seq");
 
-    tx_seq.num_items = 100;
-    rx_seq.num_items = 100;
+    tx_seq.n = 100;
+    rx_seq.n = 100;
 
     fork
       tx_seq.start(env.tx_agent.sequencer);

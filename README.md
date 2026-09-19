@@ -99,6 +99,10 @@ con `+incdir+tb` y `+UVM_TESTNAME=<test>`.
 
 Hay una guía interactiva en **`docs/index.html`**. Ábrela directamente en tu navegador (doble clic o `file://`), no necesita servidor. Incluye un simulador visual del frame UART, la **Clase 1 — Tolerancia de baudrate** (`#clase-1`, con laboratorio interactivo), ejercicios guiados (1–6) y un registro de cambios.
 
+## Curso: de electricidad básica a nivel profesional
+
+`docs/curso.html` es un curso interactivo en 8 niveles (el último es preparación de entrevistas) (electricidad → lógica → secuencial → UART 8N1 → UVM → cobertura y aserciones → prácticas de empresa) con calculadoras, un simulador del simulador de trama UART (con desviación de baudrate, stop malo y glitch), quizzes y un diagrama UVM clicable. Ábrelo directamente en el navegador.
+
 ## Ejercicios
 
 <a id="ejercicios"></a>
@@ -177,6 +181,15 @@ El scoreboard compara, en el camino TX, **los bytes que el host entregó** (por 
 </details>
 
 ## Registro de cambios
+
+### 2026-09-19 — Curso 0→experto y scripts robustos
+
+- Nuevo `docs/curso.html` (8 niveles + entrevistas, simulador interactivo, quizzes, móvil).
+- `docs/curso.html`: capa móvil (menú lateral tipo drawer, sin desborde horizontal a 375 px, controles táctiles de 44 px) y nuevo Nivel 7 de entrevista con flashcards filtrables, simulacro con temporizador, checklist de corner cases UART y ejercicios de pizarra; respuestas revisadas por verificación cruzada.
+- `sim/run_selfcheck.sh`, `sim/run_questa.sh`, `sim/run_baud_sweep.sh` ahora devuelven código de salida distinto de 0 si falla la verificación; `run_questa.sh` acepta semilla.
+- Nuevo `sim/run_regression.sh` (autoverificable + tests UVM × semillas).
+- Corrige error de compilación: `uart_tests.sv` asignaba `.num_items` pero las secuencias declaran `n`.
+- Nuevo `tb/uart_sva.sv` (forma de trama TX, rx_valid/rx_frame_err, cover; conectado con `bind`). El hueco del glitch en `uart_rx_driver.sv` ahora cubre el muestreo de mitad de bit, así el glitch se rechaza de verdad.
 
 <a id="cambios"></a>
 
