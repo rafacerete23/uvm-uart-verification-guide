@@ -122,6 +122,18 @@ summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:
 /* status box */
 .statusbox{border:2px solid var(--warn);border-radius:var(--radius);padding:var(--pad);background:color-mix(in srgb,var(--warn) 8%,var(--card))}
 footer{border-top:1px solid var(--line);padding:2rem 0;color:var(--muted);font-size:.85rem}
+#clase-1 .u1-slider{width:100%;max-width:520px}
+#clase-1 .u1-skewv{font-family:var(--mono);font-weight:700;color:var(--acc);min-width:5.5em;display:inline-block}
+#clase-1 .u1-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:.85rem;color:var(--muted)}
+#clase-1 .u1-legend span{display:inline-flex;align-items:center;gap:6px}
+#clase-1 .u1-dot{width:12px;height:12px;border-radius:50%;display:inline-block}
+#clase-1 .u1-dot.ok{background:var(--ok)}
+#clase-1 .u1-dot.err{background:var(--err)}
+#clase-1 .u1-dot.idle{background:var(--line)}
+#clase-1 .card+.card{margin-top:.8rem}
+#clase-1 .grid+.card{margin-top:.8rem}
+#clase-1 .status{margin-top:.5rem;white-space:normal}
+#clase-1 .u1-slider{min-height:44px}
 </style>
 </head>
 <body>
@@ -137,6 +149,7 @@ footer{border-top:1px solid var(--line);padding:2rem 0;color:var(--muted);font-s
       <a href="#fases">Fases</a>
       <a href="#tests">Tests</a>
       <a href="#run">Ejecutar</a>
+      <a href="#clase-1">Clase 1</a>
       <a href="#ejercicios">Ejercicios</a>
       <a href="#conceptos">Conceptos</a>
       <a href="#cambios">Cambios</a>
@@ -162,8 +175,8 @@ footer{border-top:1px solid var(--line);padding:2rem 0;color:var(--muted);font-s
     </p>
     <div class="statusbox" role="note" aria-label="Estado de verificación">
       <h3>Estado de verificación (honesto)</h3>
-      <p><strong class="ok">RTL verificado con Verilator 5.052</strong> usando <code>tb/selfcheck_tb.sv</code> (SystemVerilog plano, con decodificador de bits y generador de tramas independientes): <strong>RESULT PASS</strong> con 324 bytes TX, 296 tramas RX (18 con stop malo → error de trama, 8 con glitches rechazados), incluyendo fase full-duplex.</p>
-      <p><strong class="ok">Mutation check:</strong> 4 bugs inyectados a propósito en el RTL (bits de datos TX más cortos, orden de bits RX invertido, RX sin comprobar el stop, <code>tx_ready</code> siempre alto) fueron <strong>todos detectados (FAIL)</strong>.</p>
+      <p><strong class="ok">RTL verificado con Verilator 5.052</strong> usando <code>tb/selfcheck_tb.sv</code> (SystemVerilog plano, con decodificador de bits y generador de tramas independientes): <strong>RESULT PASS</strong> con 324 bytes TX, 366 tramas RX (18 con stop malo → error de trama, 8 con glitches rechazados, 70 con baudrate desviado del −4,0 % al +5,5 %), incluyendo fase full-duplex.</p>
+      <p><strong class="ok">Mutation check:</strong> 4 bugs inyectados a propósito en el RTL (bits de datos TX más cortos, orden de bits RX invertido, RX sin comprobar el stop, <code>tx_ready</code> siempre alto) fueron <strong>todos detectados (FAIL)</strong>. Un quinto mutante (muestreo del receptor 4 ciclos más tarde, probado en una copia temporal) pasa el self-check antiguo pero es detectado (FAIL, 22 errores) por el bloque de desviación de baudrate.</p>
       <p><strong class="warn">El testbench UVM no se ejecutó hasta el final:</strong> Verilator 5.052 aborta dentro del arranque de fases de la propia librería UVM (<code>UVM_FATAL OBJTN_ZERO</code> en tiempo 0) incluso con un test UVM mínimo tipo "hello"; es una limitación del simulador. Falta ejecutarlo en Questa/VCS/Xcelium (o EDA Playground). El testbench UVM del UART ni siquiera se elaboró bajo Verilator en esta sesión; solo se elaboró el de FIFO.</p>
     </div>
   </div>
@@ -376,6 +389,128 @@ rtl/uart_core.sv tb/uart_if.sv tb/uart_pkg.sv tb/tb_top.sv
   </div>
 </section>
 
+<!-- CLASE 1 -->
+<section id="clase-1" class="reveal">
+  <div class="wrap">
+    <h2>Clase 1 — Tolerancia de baudrate</h2>
+    <p class="muted">Cuánto puede desviarse el reloj del emisor antes de que el receptor 8N1 lea mal los datos.</p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Por qué hay tolerancia</h3>
+        <p>Emisor y receptor usan relojes distintos. No hay línea de reloj compartida.</p>
+        <p>El receptor sincroniza con el flanco del <strong>start</strong> y muestrea cada bit <span class="badge">CLKS_PER_BIT = 16</span> ciclos después.</p>
+        <p>El error se acumula a lo largo de <strong>9,5 bits</strong> (del flanco del start al centro del stop).</p>
+        <p>Regla clásica: error &lt; 0,5 bit → <strong>±0,5 / 9,5 ≈ ±5,26 %</strong>.</p>
+        <p>En la práctica se deja margen. Un divisor entero de 16 ciclos/bit solo permite pasos de 1/16 = <strong>6,25 %</strong> en el periodo del bit.</p>
+      </div>
+
+      <div class="card">
+        <h3>Qué pasa en este RTL</h3>
+        <p>El RTL muestrea el bit de datos k a los <strong>25 + 16·k</strong> ciclos desde el flanco del start, y el stop a los <strong>153</strong>.</p>
+        <p>El centro ideal del dato k sería 24 + 16·k: el muestreo cae <strong>~1 ciclo tarde</strong> (2 FF de sincronización + ciclo de detección).</p>
+        <p>Modelo: dato k correcto si <code>j = k+1</code>. El peor es D7 (t = 137): correcto si <code>128(1+s) ≤ 137 &lt; 144(1+s)</code> → s ∈ [−4,9 %, +7,0 %].</p>
+        <p>Stop (t = 153): correcto si <code>144(1+s) ≤ 153</code> → s ≤ +6,25 %.</p>
+        <p>Ventana combinada del modelo: <strong>≈ −4,9 % … +6,25 %</strong>. La asimetría viene del ciclo de retraso.</p>
+        <p>Ventana medida en Verilator: <strong>−4,5 % … +6,0 %</strong>.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Laboratorio de desviación</h3>
+      <div class="ctrl">
+        <label for="u1-skew">Desviación del emisor:</label>
+        <span id="u1-skewv" class="u1-skewv">+0,0 %</span>
+      </div>
+      <div class="ctrl">
+        <input type="range" id="u1-skew" class="u1-slider" min="-120" max="120" step="5" value="0" aria-describedby="u1-skewv">
+      </div>
+      <div class="ctrl">
+        <button id="u1-b1" type="button">−4,5 % (último OK)</button>
+        <button id="u1-b2" type="button">+6,0 % (último OK)</button>
+        <button id="u1-b3" type="button">−5,0 % (falla)</button>
+        <button id="u1-b4" type="button">+6,5 % (falla)</button>
+        <button id="u1-anim" class="primary" type="button">▶ Barrer</button>
+      </div>
+
+      <div class="wave">
+        <svg id="u1-svg" class="diagram" viewBox="0 0 640 210" role="img" aria-label="Trama UART con slots de bits y marcas de muestreo del receptor según la desviación del emisor">
+          <g id="u1-slots"></g>
+          <g id="u1-marks"></g>
+        </svg>
+      </div>
+      <div class="u1-legend">
+        <span><i class="u1-dot ok"></i>muestreo correcto</span>
+        <span><i class="u1-dot err"></i>muestreo fuera de su bit</span>
+        <span><i class="u1-dot idle"></i>línea en reposo</span>
+      </div>
+
+      <div class="status" id="u1-out" aria-live="polite">—</div>
+      <div class="status" id="u1-meas" aria-live="polite">—</div>
+      <p class="small muted">«Medido» proviene de <code>tb/baud_sweep_tb.sv</code>: 8 patrones (00 FF 55 AA 80 01 7F FE), paso de 0,5 %, de −12 % a +12 %.</p>
+    </div>
+
+    <div class="card">
+      <h3>Cómo se verifica</h3>
+      <p>El self-check añade <code>drive_frame_skew</code>: genera tramas con el bit desviado <code>skew_pm</code> milésimas, con fronteras enteras.</p>
+      <p>Frontera del bit i: <code>((i+1)·CLKS_PER_BIT·(1000+skew_pm))/1000</code> ciclos.</p>
+      <p>5 desvíos (−4,0 %, −2,5 %, +2,5 %, +4,0 %, +5,5 %) × 14 tramas (00, FF, 80, 01 y 10 aleatorias) = 70 tramas, todas comparadas por el scoreboard.</p>
+      <pre><code><span class="k">task automatic</span> <span class="f">drive_frame_skew</span>(<span class="k">input</span> <span class="k">logic</span> [<span class="n">7</span>:<span class="n">0</span>] data, <span class="k">input</span> <span class="k">int</span> skew_pm, <span class="k">input</span> <span class="k">int</span> idle_clks);
+  <span class="k">int</span> elapsed = <span class="n">0</span>;
+  <span class="k">int</span> boundary;
+  <span class="k">int</span> num;
+  <span class="c">// bit 0 = start, 1..8 = datos LSB primero, 9 = stop</span>
+  <span class="k">for</span> (<span class="k">int</span> i = <span class="n">0</span>; i &lt; <span class="n">10</span>; i++) <span class="k">begin</span>
+    <span class="k">if</span> (i == <span class="n">0</span>)      rxd = <span class="n">1'b0</span>;          <span class="c">// start</span>
+    <span class="k">else if</span> (i == <span class="n">9</span>) rxd = <span class="n">1'b1</span>;          <span class="c">// stop</span>
+    <span class="k">else</span>             rxd = data[i-<span class="n">1</span>];     <span class="c">// datos LSB primero</span>
+    <span class="c">// frontera del bit i (fin del bit i) en ciclos desde el inicio de la trama</span>
+    num = (i+<span class="n">1</span>) * CLKS_PER_BIT * (<span class="n">1000</span> + skew_pm);
+    boundary = num / <span class="n">1000</span>;
+    <span class="k">repeat</span> (boundary - elapsed) @(<span class="k">posedge</span> clk);
+    elapsed = boundary;
+  <span class="k">end</span>
+  <span class="c">// idle tras el stop</span>
+  rxd = <span class="n">1'b1</span>;
+  <span class="k">repeat</span> (idle_clks) @(<span class="k">posedge</span> clk);
+  <span class="c">// ... (se añade el evento esperado a exp_q)</span>
+<span class="k">endtask</span></code><button class="copy" data-copy="task automatic drive_frame_skew(input logic [7:0] data, input int skew_pm, input int idle_clks);
+  int elapsed = 0;
+  int boundary;
+  int num;
+  // bit 0 = start, 1..8 = datos LSB primero, 9 = stop
+  for (int i = 0; i &lt; 10; i++) begin
+    if (i == 0)      rxd = 1&#x27;b0;          // start
+    else if (i == 9) rxd = 1&#x27;b1;          // stop
+    else             rxd = data[i-1];     // datos LSB primero
+    // frontera del bit i (fin del bit i) en ciclos desde el inicio de la trama
+    num = (i+1) * CLKS_PER_BIT * (1000 + skew_pm);
+    boundary = num / 1000;
+    repeat (boundary - elapsed) @(posedge clk);
+    elapsed = boundary;
+  end
+  // idle tras el stop
+  rxd = 1&#x27;b1;
+  repeat (idle_clks) @(posedge clk);
+  // ... (se añade el evento esperado a exp_q)
+endtask">Copiar</button></pre>
+    </div>
+
+    <div class="card">
+      <h3>Resultado medido</h3>
+      <p>Barrido en Verilator 5.052: recibe todo bien de <strong>−4,5 % a +6,0 %</strong> (22 puntos OK).</p>
+      <p>Falla en −5,0 % y por debajo: datos corruptos <strong>sin error de trama</strong> (8 tramas recibidas, 0 errores).</p>
+      <p>Falla en +6,5 % y por encima: 4 de las 8 tramas dan error de trama (las de D7 = 0).</p>
+      <p>Con +6,5 % el stop se muestrea dentro de D7; si D7 = 0 se lee stop = 0 → <code>rx_frame_err</code>.</p>
+      <p>Con −5 % D7 se muestrea ya dentro del stop y se lee un 1 en vez de D7 → dato corrupto silencioso.</p>
+      <p>Self-check con <code>drive_frame_skew</code>: <strong>RESULT: PASS</strong> con 366 tramas RX (296 + 70).</p>
+      <p>Mutación real: cambiar el umbral de validación del start de <code>(CLKS_PER_BIT/2)-1</code> a <code>(CLKS_PER_BIT/2)+3</code> (muestreo 4 ciclos más tarde). El self-check <strong>antiguo</strong> seguía dando PASS; el <strong>nuevo</strong> da FAIL (22 errores).</p>
+      <p>Barrido reproducible con <code>bash sim/run_baud_sweep.sh</code>.</p>
+      <p class="small muted">Nota: es el testbench plano, no UVM (UVM sigue sin ejecutarse en ningún simulador). El modelo de la ventana está deducido del RTL y coincide con la medida en los puntos de 0,5 % probados.</p>
+    </div>
+  </div>
+</section>
+
 <!-- 8 EJERCICIOS -->
 <section id="ejercicios" class="reveal">
   <div class="wrap">
@@ -397,6 +532,44 @@ rtl/uart_core.sv tb/uart_if.sv tb/uart_pkg.sv tb/tb_top.sv
       <p class="small">Escribe una secuencia que envíe <code>0x55</code> varias veces seguidas y explica qué compara el scoreboard.</p>
       <details><summary>Pista</summary><p class="small">0x55 = 8'b01010101, alterna bits. El scoreboard TX compara host_ap vs line_ap.</p></details>
       <details><summary>Solución</summary><p class="small">La secuencia hace <code>repeat(N) `uvm_do_with(req, {data == 8'h55;})</code>. El scoreboard TX compara cada byte aceptado por el host (<code>host_ap</code>) con la trama decodificada desde <code>txd</code> (<code>line_ap</code>): mismo dato, LSB primero, start=0 y stop=1. En RX compara las tramas inyectadas (<code>in_ap</code>) con <code>rx_valid</code>/<code>rx_data</code> o <code>rx_frame_err</code> (<code>out_ap</code>).</p></details>
+    </div>
+    <div class="card" style="margin-top:.8rem">
+      <h3>Ejercicio 4 — Tolerancia teórica con muestreo ideal</h3>
+      <p class="small">Un UART 8N1 muestrea cada bit exactamente en su centro. ¿Qué desviación máxima entre el baudrate del emisor y el del receptor puede tolerar sin leer mal ningún bit? Expresa el resultado en porcentaje y explica de dónde sale la cifra clásica de ±5&nbsp;%.</p>
+      <details><summary>Pista</summary><p class="small">El error de temporización se acumula desde el flanco de bajada del bit de start hasta el centro del bit de stop. ¿Cuántos periodos de bit hay entre esos dos instantes? Compara ese error acumulado con la mitad de un bit.</p></details>
+      <details><summary>Solución</summary><p class="small">El centro del stop está a <strong>9,5 bits</strong> del flanco de bajada del start (1 bit de start + 8 de datos + 0,5 del stop). Para no leer mal ningún bit, el error acumulado debe ser menor que medio bit: 0,5&nbsp;/&nbsp;9,5 ≈ <strong>5,26&nbsp;%</strong>. De ahí la cifra clásica de ±5&nbsp;%: en la práctica se deja margen para jitter, asimetrías de flanco y otros errores del receptor.</p></details>
+    </div>
+
+    <div class="card" style="margin-top:.8rem">
+      <h3>Ejercicio 5 — Predice el fallo con +6,5&nbsp;% y con −5,0&nbsp;%</h3>
+      <p class="small">Este RTL muestrea el bit de datos k (k=0..7) a los 25+16k ciclos del flanco de bajada de rxd, y el stop a los 153 ciclos. Un emisor con periodo de bit N = 16·(1+s) coloca el bit i (0=start, 1..8=D0..D7, 9=stop) en [N·i, N·(i+1)). Usando esos instantes, predice qué bit se lee mal y qué síntoma observa el scoreboard (¿error de trama o datos corruptos?) con <strong>+6,5&nbsp;%</strong> y con <strong>−5,0&nbsp;%</strong>. Indica además qué bytes de la lista 00 FF 55 AA 80 01 7F FE se ven afectados en cada caso.</p>
+      <details><summary>Pista</summary><p class="small">Calcula N en cada caso. Para el stop compara su inicio 9N con t=153 (instante de muestreo del stop). Para D7 compara 9N con t=137 (instante de muestreo de D7). ¿Dónde cae el muestreo, dentro del bit correcto o dentro del vecino?</p></details>
+      <details><summary>Solución</summary><p class="small"><strong>+6,5&nbsp;%:</strong> N = 16·1,065 = 17,04. El stop empieza en 9N = 153,36 &gt; 153, así que a t=153 el receptor todavía está dentro de D7: si D7=0 lee stop=0 y se dispara <strong>rx_frame_err</strong>. Afecta a los bytes con D7=0 de la lista (00, 55, 7F, 01), es decir <strong>4 de los 8</strong>, que es justo lo medido.<br>
+      <strong>−5,0&nbsp;%:</strong> N = 16·0,95 = 15,2. D7 se muestrea a t=137, pero el stop empieza en 9N = 136,8 &lt; 137, o sea que a t=137 ya estamos dentro del stop y se lee un 1: el byte llega <strong>sin error de trama pero con el bit 7 forzado a 1</strong> (corrupción silenciosa); afecta a los mismos bytes con D7=0. Coincide con lo medido: 8 tramas, 0 errores de trama, datos mal.<br>
+      Es un modelo deducido del RTL que coincide con la medida en estos dos puntos.</p></details>
+    </div>
+
+    <div class="card" style="margin-top:.8rem">
+      <h3>Ejercicio 6 — ¿Por qué calcular las fronteras con enteros acumulados?</h3>
+      <p class="small">El generador de tramas desviadas calcula la frontera del bit i como <code>((i+1)*CLKS_PER_BIT*(1000+skew_pm))/1000</code> en lugar de redondear el periodo de un bit y luego sumarlo repetidamente. Explica por qué esto importa y escribe la fórmula en SystemVerilog.</p>
+      <details><summary>Pista</summary><p class="small">Con skew_pm=+55, el periodo real de bit es 16·1,055 = 16,88 ciclos. Si redondeases a 17 ciclos por bit, ¿cuál sería la desviación efectiva? ¿Cuántas veces se repite ese error a lo largo de una trama de 10 bits?</p></details>
+      <details><summary>Solución</summary><p class="small">Con skew_pm=+55, 16·1,055 = 16,88. Si se redondease a 17 ciclos por bit, la desviación efectiva sería 17/16 − 1 = <strong>+6,25&nbsp;%</strong>, no +5,5&nbsp;%, y ese error se repetiría en cada uno de los 10 bits de la trama, acercando la prueba al límite de la ventana (medido: +6,0&nbsp;% aún OK, +6,5&nbsp;% ya falla) en lugar de ejercitar el valor que se pretendía. Calculando cada frontera como un entero acumulado, el error de cada frontera queda por debajo de 1 ciclo y <strong>no se acumula</strong>.</p>
+      <pre><code><span class="c">// tb/selfcheck_tb.sv (ejecutado en Verilator)</span>
+    <span class="k">int</span> num, boundary, elapsed;
+    <span class="k">for</span> (<span class="k">int</span> i = <span class="n">0</span>; i &lt; <span class="n">10</span>; i++) <span class="k">begin</span>
+      num      = (i+<span class="n">1</span>) * CLKS_PER_BIT * (<span class="n">1000</span> + skew_pm);
+      boundary = num / <span class="n">1000</span>;
+      <span class="f">repeat</span> (boundary - elapsed) @(<span class="k">posedge</span> clk);
+      elapsed  = boundary;
+    <span class="k">end</span></code><button class="copy" data-copy="// tb/selfcheck_tb.sv (ejecutado en Verilator)
+    int num, boundary, elapsed;
+    for (int i = 0; i &lt; 10; i++) begin
+      num      = (i+1) * CLKS_PER_BIT * (1000 + skew_pm);
+      boundary = num / 1000;
+      repeat (boundary - elapsed) @(posedge clk);
+      elapsed  = boundary;
+    end">Copiar</button></pre>
+      </details>
     </div>
   </div>
 </section>
@@ -428,6 +601,7 @@ rtl/uart_core.sv tb/uart_if.sv tb/uart_pkg.sv tb/tb_top.sv
     <h2>10. Registro de cambios</h2>
     <div class="card">
       <ul>
+        <li><strong>2026-09-19</strong> — Clase 1 (tolerancia de baudrate) con laboratorio interactivo; ejercicios 4–6; <code>drive_frame_skew</code> y bloque de 70 tramas con baudrate desviado en <code>tb/selfcheck_tb.sv</code> (PASS, 366 tramas RX); nuevo <code>tb/baud_sweep_tb.sv</code> + <code>sim/run_baud_sweep.sh</code> (ventana medida −4,5 % … +6,0 %). Un mutante de muestreo tardío que el self-check antiguo no veía ahora da FAIL. El testbench UVM sigue sin ejecutarse.</li>
         <li><strong>2026-09-19</strong> — Versión inicial.</li>
       </ul>
     </div>
@@ -696,6 +870,226 @@ stepBtns.addEventListener("click", function(e){
   if(b) showStep(b.getAttribute("data-i"));
 });
 showStep(0);
+
+/* ---------- CLASE 1: LABORATORIO DE DESVIACION ---------- */
+(function () {
+  var svg = document.getElementById('u1-svg');
+  var gSlots = document.getElementById('u1-slots');
+  var gMarks = document.getElementById('u1-marks');
+  var slider = document.getElementById('u1-skew');
+  var skewv = document.getElementById('u1-skewv');
+  var out = document.getElementById('u1-out');
+  var meas = document.getElementById('u1-meas');
+  var btnAnim = document.getElementById('u1-anim');
+  if (!svg || !slider) return;
+
+  var PX = 3.3;
+  var MX = 20;
+  var CY_TOP = 70;
+  var CY_BOT = 160;
+  var SLOT_H = 40;
+  var NS = 'http://www.w3.org/2000/svg';
+
+  function el(name, attrs) {
+    var n = document.createElementNS(NS, name);
+    if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+
+  function fmtPct(pm) {
+    var v = pm / 10;
+    var s = v.toFixed(1).replace('.', ',');
+    if (v >= 0) s = '+' + s;
+    return s + ' %';
+  }
+
+  // Modelo: devuelve 9 muestreos {name,t,slot,expected,ok,note}
+  function u1Eval(skew_pm) {
+    var s = skew_pm / 1000;
+    var N = 16 * (1 + s);
+    var res = [];
+    var k, t, j, expected, ok, note;
+    for (k = 0; k < 8; k++) {
+      t = 25 + 16 * k;
+      j = Math.floor(t / N);
+      expected = k + 1;
+      ok = (j === expected);
+      note = ok ? '' : ('se muestrea en el slot ' + j);
+      res.push({ name: 'D' + k, t: t, slot: j, expected: expected, ok: ok, note: note });
+    }
+    // stop
+    t = 153;
+    j = Math.floor(t / N);
+    ok = (j === 9) || (t >= 10 * N);
+    note = ok ? '' : ('se muestrea en el slot ' + j);
+    res.push({ name: 'P', t: t, slot: j, expected: 9, ok: ok, note: note });
+    return res;
+  }
+
+  function draw(skew_pm) {
+    var s = skew_pm / 1000;
+    var N = 16 * (1 + s);
+    var ev = u1Eval(skew_pm);
+
+    while (gSlots.firstChild) gSlots.removeChild(gSlots.firstChild);
+    while (gMarks.firstChild) gMarks.removeChild(gMarks.firstChild);
+
+    // línea de reposo (hasta 180 ciclos)
+    var idleX1 = MX + 10 * N * PX;
+    var idleX2 = MX + 180 * PX;
+    if (idleX2 > idleX1) {
+      gSlots.appendChild(el('line', {
+        x1: idleX1, y1: CY_TOP, x2: idleX2, y2: CY_TOP,
+        stroke: 'var(--line)', 'stroke-width': 2, 'stroke-dasharray': '3 3'
+      }));
+    }
+
+    // slots 0..9
+    var labels = ['S', 'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'P'];
+    for (var i = 0; i < 10; i++) {
+      var x = MX + i * N * PX;
+      var w = N * PX;
+      var fill = (i % 2 === 0) ? 'var(--bg2)' : 'var(--card)';
+      gSlots.appendChild(el('rect', {
+        x: x, y: CY_TOP - SLOT_H / 2, width: w, height: SLOT_H,
+        fill: fill, stroke: 'var(--line)', 'stroke-width': 1
+      }));
+      var tx = x + w / 2;
+      var ty = CY_TOP + 5;
+      var txt = el('text', {
+        x: tx, y: ty, 'text-anchor': 'middle',
+        'font-size': 16, fill: 'var(--fg)'
+      });
+      txt.textContent = labels[i];
+      gSlots.appendChild(txt);
+    }
+
+    // marcas de muestreo
+    for (var m = 0; m < ev.length; m++) {
+      var e = ev[m];
+      var mx = MX + e.t * PX;
+      var color = e.ok ? 'var(--ok)' : 'var(--err)';
+      // línea vertical punteada hasta el slot
+      gMarks.appendChild(el('line', {
+        x1: mx, y1: CY_TOP + SLOT_H / 2, x2: mx, y2: CY_BOT - 8,
+        stroke: color, 'stroke-width': 1, 'stroke-dasharray': '2 3', opacity: 0.6
+      }));
+      gMarks.appendChild(el('circle', {
+        cx: mx, cy: CY_BOT, r: 5, fill: color, stroke: 'var(--bg)', 'stroke-width': 1
+      }));
+      var lt = el('text', {
+        x: mx, y: CY_BOT - 12, 'text-anchor': 'middle',
+        'font-size': 14, fill: color
+      });
+      lt.textContent = e.name;
+      gMarks.appendChild(lt);
+    }
+
+    // mensaje principal
+    var fails = [];
+    for (var f = 0; f < ev.length; f++) if (!ev[f].ok) fails.push(ev[f]);
+    var allOk = fails.length === 0;
+    var msg;
+    if (allOk) {
+      msg = 'Los 9 muestreos caen en su bit.';
+    } else {
+      var parts = [];
+      var hasD7 = false, hasStop = false;
+      for (var q = 0; q < fails.length; q++) {
+        if (fails[q].name === 'D7') hasD7 = true;
+        if (fails[q].name === 'P') hasStop = true;
+      }
+      if (hasD7 && skew_pm <= -50) {
+        parts.push('D7 se muestrea en el slot del stop: se lee un 1 en vez de D7 → dato corrupto sin error de trama.');
+      }
+      if (hasStop && skew_pm >= 65) {
+        parts.push('El stop se muestrea dentro de D7: si D7=0 → rx_frame_err.');
+      }
+      if (parts.length === 0) {
+        for (var r = 0; r < fails.length; r++) {
+          parts.push(fails[r].name + ' ' + fails[r].note + '.');
+        }
+      }
+      msg = parts.join(' ');
+    }
+    out.textContent = msg;
+    out.className = 'status ' + (allOk ? 'ok' : 'err');
+
+    // mensaje medido
+    var mmsg;
+    if (skew_pm >= -45 && skew_pm <= 60) {
+      mmsg = 'Medido en Verilator: OK (8/8 bytes)';
+    } else if (Math.abs(skew_pm) <= 120) {
+      mmsg = 'Medido en Verilator: FALLA';
+      if (skew_pm >= 65) mmsg += ' (4 de 8 tramas con error de trama)';
+      else if (skew_pm <= -50) mmsg += ' (8 tramas recibidas con datos corruptos, sin error de trama)';
+    } else {
+      mmsg = 'Fuera del rango medido.';
+    }
+    meas.textContent = mmsg;
+    meas.className = 'status ' + ((skew_pm >= -45 && skew_pm <= 60) ? 'ok' : 'warn');
+
+    skewv.textContent = fmtPct(skew_pm);
+  }
+
+  function setSkew(v) {
+    slider.value = String(v);
+    draw(v);
+  }
+
+  slider.addEventListener('input', function () {
+    draw(parseInt(slider.value, 10));
+  });
+
+  var shortcuts = [
+    ['u1-b1', -45],
+    ['u1-b2', 60],
+    ['u1-b3', -50],
+    ['u1-b4', 65]
+  ];
+  for (var i = 0; i < shortcuts.length; i++) {
+    (function (id, val) {
+      var b = document.getElementById(id);
+      if (b) b.addEventListener('click', function () { setSkew(val); });
+    })(shortcuts[i][0], shortcuts[i][1]);
+  }
+
+  var animId = null;
+  function stopAnim() {
+    if (animId !== null) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
+    if (btnAnim) btnAnim.textContent = '▶ Barrer';
+  }
+
+  if (btnAnim) {
+    btnAnim.addEventListener('click', function () {
+      if (animId !== null) { stopAnim(); return; }
+      if (reduce) { setSkew(0); return; }
+      var t0 = null;
+      var DUR = 6000;
+      btnAnim.textContent = '■ Detener';
+      function step(ts) {
+        if (t0 === null) t0 = ts;
+        var p = (ts - t0) / DUR;
+        if (p >= 1) {
+          setSkew(120);
+          stopAnim();
+          return;
+        }
+        var v = -120 + 240 * p;
+        v = Math.round(v / 5) * 5;
+        slider.value = String(v);
+        draw(v);
+        animId = requestAnimationFrame(step);
+      }
+      animId = requestAnimationFrame(step);
+    });
+  }
+
+  draw(0);
+})();
 
 /* ---------- COPY BUTTONS ---------- */
 document.querySelectorAll(".copy").forEach(function(btn){

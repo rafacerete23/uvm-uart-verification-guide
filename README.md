@@ -34,9 +34,11 @@ uvm-uart-verification-guide/
 │   ├── uart_tests.sv         # Tests: uart_tx_test, uart_rx_test, uart_error_test, uart_glitch_test, uart_full_duplex_test
 │   ├── uart_pkg.sv           # Paquete UVM que agrupa todas las clases
 │   ├── tb_top.sv             # Top-level: instancia DUT, interfaz y arranca UVM
-│   └── selfcheck_tb.sv       # Testbench SystemVerilog plano con decodificador y generador de tramas independientes
+│   ├── selfcheck_tb.sv       # Testbench SystemVerilog plano con decodificador y generador de tramas independientes (incluye tramas con baudrate desviado)
+│   └── baud_sweep_tb.sv      # Barrido de tolerancia de baudrate del receptor (de -12 % a +12 %, paso 0,5 %)
 ├── sim/
 │   ├── run_selfcheck.sh      # Corre el self-check con Verilator 5
+│   ├── run_baud_sweep.sh     # Corre el barrido de tolerancia de baudrate con Verilator 5
 │   └── run_questa.sh         # Corre un test UVM con Questa
 ├── docs/
 │   └── index.html            # Guía web didáctica e interactiva (ábrela en tu navegador)
@@ -74,8 +76,10 @@ con `+incdir+tb` y `+UVM_TESTNAME=<test>`.
 **RTL: VERIFICADO ✅**
 
 - Verificado con **Verilator 5.052** usando `tb/selfcheck_tb.sv` (SystemVerilog plano, con un decodificador a nivel de bit y un generador de tramas independientes).
-- Resultado: **PASS** con **324 bytes TX**, **296 tramas RX** (**18 con bit de stop malo → error de trama**, **8 con glitches rechazados**), incluyendo una fase full-duplex.
-- **Mutation check:** se inyectaron 4 bugs deliberados en el RTL (bits de datos TX más cortos, orden de bits RX invertido, RX que no revisa el bit de stop, `tx_ready` siempre alto) y **los 4 fueron detectados (FAIL)**.
+- Resultado: **PASS** con **324 bytes TX**, **366 tramas RX** (**70 con baudrate desviado entre −4,0 % y +5,5 %**, **18 con bit de stop malo → error de trama**, **8 con glitches rechazados**), incluyendo una fase full-duplex.
+- **Mutation check:** se inyectaron 4 bugs deliberados en el RTL (bits de datos TX más cortos, orden de bits RX invertido, RX que no revisa el bit de stop, `tx_ready` siempre alto) y **los 4 fueron detectados (FAIL)**. Además, un quinto mutante (el receptor muestrea cada bit 4 ciclos más tarde, probado en una copia temporal) **pasaba el self-check antiguo** pero **da FAIL (22 errores)** con el bloque de baudrate desviado.
+
+**Tolerancia de baudrate medida (Verilator 5.052, `bash sim/run_baud_sweep.sh`, 8 bytes por punto, paso de 0,5 %):** el receptor acepta un emisor con el periodo de bit desviado entre **−4,5 % y +6,0 %**; falla en −5,0 % (datos corruptos sin error de trama) y en +6,5 % (`rx_frame_err` en 4 de las 8 tramas). Es una medida del RTL con estos patrones, no una garantía general.
 
 **Testbench UVM: NO EJECUTADO HASTA EL FINAL ⚠️**
 
@@ -93,7 +97,7 @@ con `+incdir+tb` y `+UVM_TESTNAME=<test>`.
 
 ## Guía web didáctica
 
-Hay una guía interactiva en **`docs/index.html`**. Ábrela directamente en tu navegador (doble clic o `file://`), no necesita servidor. Incluye un simulador visual del frame UART, ejercicios guiados y un registro de cambios.
+Hay una guía interactiva en **`docs/index.html`**. Ábrela directamente en tu navegador (doble clic o `file://`), no necesita servidor. Incluye un simulador visual del frame UART, la **Clase 1 — Tolerancia de baudrate** (`#clase-1`, con laboratorio interactivo), ejercicios guiados (1–6) y un registro de cambios.
 
 ## Ejercicios
 
@@ -175,6 +179,13 @@ El scoreboard compara, en el camino TX, **los bytes que el host entregó** (por 
 ## Registro de cambios
 
 <a id="cambios"></a>
+
+### 2026-09-19 — Clase 1: tolerancia de baudrate
+
+- Nueva clase con laboratorio interactivo y ejercicios 4–6 en `docs/index.html`.
+- `tb/selfcheck_tb.sv`: task `drive_frame_skew` y 70 tramas con baudrate desviado (PASS, 366 tramas RX).
+- Nuevo `tb/baud_sweep_tb.sv` + `sim/run_baud_sweep.sh`: ventana medida −4,5 % … +6,0 %.
+- El testbench UVM sigue sin ejecutarse en ningún simulador.
 
 ### 2026-09-19 — Versión inicial
 

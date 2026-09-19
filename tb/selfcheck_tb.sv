@@ -38,6 +38,7 @@ module tb_selfcheck;
   int rx_frames = 0;
   int rx_errs = 0;
   int glitches = 0;
+  int skew_frames = 0;
 
   task automatic report_err(string msg);
     err_count++;
@@ -173,6 +174,41 @@ module tb_selfcheck;
     end
   endtask
 
+  // ---- RX driver con desviacion de baudrate ----
+  // Genera una trama 8N1 con periodo de bit = CLKS_PER_BIT*(1000+skew_pm)/1000.
+  // skew_pm en milésimas: +30 => bit 3% más largo (emisor más lento), -30 => más corto.
+  // Las fronteras de bit se calculan en ciclos enteros desde el inicio de la trama
+  // para no acumular error de redondeo.
+  task automatic drive_frame_skew(input logic [7:0] data, input int skew_pm,
+                                  input int idle_clks);
+    int elapsed = 0;
+    int boundary;
+    int num;
+    // bit 0 = start, 1..8 = datos LSB primero, 9 = stop
+    for (int i = 0; i < 10; i++) begin
+      if (i == 0)      rxd = 1'b0;          // start
+      else if (i == 9) rxd = 1'b1;          // stop
+      else             rxd = data[i-1];     // datos LSB primero
+      // frontera del bit i (fin del bit i) en ciclos desde el inicio de la trama
+      num = (i+1) * CLKS_PER_BIT * (1000 + skew_pm);
+      boundary = num / 1000;
+      repeat (boundary - elapsed) @(posedge clk);
+      elapsed = boundary;
+    end
+    // idle tras el stop
+    rxd = 1'b1;
+    repeat (idle_clks) @(posedge clk);
+
+    // evento esperado: trama buena
+    begin
+      rx_ev_t e;
+      e.data = data;
+      e.err = 1'b0;
+      exp_q.push_back(e);
+      rx_frames++;
+    end
+  endtask
+
   // ---- Scoreboard ----
   task automatic check_queues();
     if (sent_q.size() != line_q.size()) begin
@@ -207,6 +243,7 @@ module tb_selfcheck;
   logic [7:0] rand_bytes [200];
   logic [7:0] fd_tx [100];
   logic [7:0] fd_rx [100];
+  int skew_list [5];
 
   initial begin
     void'($urandom(2024));
@@ -293,6 +330,25 @@ module tb_selfcheck;
     drive_frame(8'h5A, 1'b0, 2*CLKS_PER_BIT, 1'b0);
     repeat (4) @(posedge clk);
 
+    // Tolerancia de baudrate: tramas con periodo de bit desviado (skew_pm en milesimas).
+    // Los valores estan dentro de la ventana medida (aprox. -4.5% .. +6.0%) para CLKS_PER_BIT=16.
+    skew_list[0] = -40; skew_list[1] = -25; skew_list[2] = 25; skew_list[3] = 40; skew_list[4] = 55;
+    for (int s = 0; s < 5; s++) begin
+      for (int i = 0; i < 14; i++) begin
+        logic [7:0] d;
+        case (i)
+          0: d = 8'h00;
+          1: d = 8'hFF;
+          2: d = 8'h80;
+          3: d = 8'h01;
+          default: d = 8'($urandom);
+        endcase
+        drive_frame_skew(d, skew_list[s], 2*CLKS_PER_BIT);
+        skew_frames++;
+      end
+    end
+    repeat (4) @(posedge clk);
+
     // Final scoreboard
     check_queues();
 
@@ -301,8 +357,8 @@ module tb_selfcheck;
     end else begin
       $display("RESULT: FAIL (%0d errors)", err_count);
     end
-    $display("SUMMARY: tx_bytes=%0d rx_frames=%0d rx_frame_errs=%0d glitches=%0d",
-             tx_bytes, rx_frames, rx_errs, glitches);
+    $display("SUMMARY: tx_bytes=%0d rx_frames=%0d rx_frame_errs=%0d glitches=%0d skew_frames=%0d",
+             tx_bytes, rx_frames, rx_errs, glitches, skew_frames);
     $finish;
   end
 
