@@ -97,7 +97,7 @@ con `+incdir+tb` y `+UVM_TESTNAME=<test>`.
 
 ## Guía web didáctica
 
-Hay una guía interactiva en **`docs/index.html`**. Ábrela directamente en tu navegador (doble clic o `file://`), no necesita servidor. Incluye un simulador visual del frame UART, la **Clase 1 — Tolerancia de baudrate** (`#clase-1`, con laboratorio interactivo), ejercicios guiados (1–6) y un registro de cambios.
+Hay una guía interactiva en **`docs/index.html`**. Ábrela directamente en tu navegador (doble clic o `file://`), no necesita servidor. Incluye un simulador visual del frame UART, la **Clase 1 — Tolerancia de baudrate** (`#clase-1`) y la **Clase 2 — Inyección de errores** (`#clase-2`), ambas con laboratorio interactivo, ejercicios guiados (1–9) y un registro de cambios.
 
 ## Curso: de electricidad básica a nivel profesional
 
@@ -192,6 +192,12 @@ El scoreboard compara, en el camino TX, **los bytes que el host entregó** (por 
 - Nuevo `tb/uart_sva.sv` (forma de trama TX, rx_valid/rx_frame_err, cover; conectado con `bind`). El hueco del glitch en `uart_rx_driver.sv` ahora cubre el muestreo de mitad de bit, así el glitch se rechaza de verdad.
 
 <a id="cambios"></a>
+
+### 2026-09-23 — Clase 2: inyección de errores (fault injection)
+
+- Nueva clase con laboratorio visual de fallos (glitch, stop corrupto, tramas pegadas) y ejercicios 7–9 en `docs/index.html`.
+- `tb/selfcheck_tb.sv`: nueva fase de 30 tramas con separación mínima (`idle_clks=1`) y glitch antepuesto, reutilizando la tarea `drive_frame` existente (RESULT: PASS).
+- El testbench UVM sigue sin ejecutarse en ningún simulador.
 
 ### 2026-09-19 — Clase 1: tolerancia de baudrate
 

@@ -513,6 +513,345 @@ endtask">Copiar</button></pre>
   </div>
 </section>
 
+<!-- CLASE 2 -->
+<section id="clase-2" class="reveal">
+  <div class="wrap">
+    <h2>Clase 2 — Inyección de errores (fault injection) en verificación</h2>
+
+    <p class="lead">
+      Verificar un enlace serie no consiste solo en comprobar que una trama bien formada llega intacta al otro extremo.
+      Un banco de pruebas serio debe <strong>provocar fallos conocidos</strong> y comprobar que el diseño los detecta,
+      los reporta o los ignora según corresponda. A esto se le llama <em>inyección de errores</em> (fault injection).
+    </p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Por qué no basta con el "camino feliz"</h3>
+        <p>
+          Un testbench que solo envía bytes correctos con separación holgada entre tramas verifica la mitad del receptor.
+          El silicio real vive en un entorno hostil: ruido en la línea, desconexiones, arranques en mitad de una trama,
+          cables flojos que producen pulsos espurios. Si el receptor no se ha enfrentado nunca a esas condiciones,
+          no sabemos si se recupera, si se cuelga o si entrega basura al usuario.
+        </p>
+        <p>
+          La inyección de errores convierte esas condiciones en <strong>estímulos reproducibles</strong>: cada fallo se
+          describe con parámetros concretos (duración del glitch, bit de stop forzado, separación entre tramas) y se
+          ejecuta en simulación. Así el fallo deja de ser una anécdota y pasa a ser un caso de prueba con resultado
+          PASS/FAIL medible.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Fallos típicos en un enlace serie 8N1</h3>
+        <ul>
+          <li><strong>Glitch en la línea:</strong> un pulso bajo muy corto antes del bit de start. Si el receptor no lo filtra, arranca una trama falsa.</li>
+          <li><strong>Bit de start falso:</strong> la línea cae a 0 durante un tiempo suficiente para que el receptor lo confunda con un start legítimo.</li>
+          <li><strong>Stop corrupto (framing error):</strong> el bit de stop llega a 0 en lugar de 1. El receptor debe marcar <code>rx_frame_err</code> y descartar el byte.</li>
+          <li><strong>Condición de break:</strong> la línea permanece a 0 más tiempo que una trama completa. Es un caso límite entre "stop corrupto" y "línea en reposo mal interpretada".</li>
+          <li><strong>Tramas pegadas:</strong> dos tramas consecutivas sin separación. El receptor debe volver a idle y detectar el siguiente start casi de inmediato.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Relación con mutation testing</h3>
+        <p>
+          La inyección de errores en el <em>estímulo</em> es la cara simétrica del <em>mutation testing</em> en el diseño.
+          En mutation testing se introduce un fallo conocido en el RTL (por ejemplo, invertir un comparador) y se comprueba
+          que la batería de tests lo detecta. Si ningún test falla, el test no vale.
+        </p>
+        <p>
+          Aquí hacemos lo mismo pero desde el lado del banco: introducimos un fallo conocido en la línea y comprobamos
+          que el receptor y el scoreboard lo detectan. Si el scoreboard no se queja ante un stop corrupto, el scoreboard
+          está ciego y hay que arreglarlo antes de confiar en él.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Qué medimos</h3>
+        <p>
+          En nuestro <code>tb/selfcheck_tb.sv</code> el scoreboard compara cada byte recibido con el enviado y cuenta
+          eventos anómalos (framing errors, glitches rechazados). La fase nueva de esta clase añade 30 tramas con
+          separación mínima y un glitch antepuesto a cada una, y exige que el contador de glitches suba exactamente
+          en 30 y que ningún byte válido se pierda.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Laboratorio de inyección de errores (visual)</h3>
+      <p class="small">
+        Este laboratorio es puramente educativo: dibuja una trama UART 8N1 y superpone fallos sobre ella.
+        No ejecuta RTL; solo ilustra qué parte de la trama queda afectada y qué detectaría el receptor.
+      </p>
+      <div class="ctrl">
+        <button type="button" id="u2-btn-glitch">Glitch antes del start</button>
+        <button type="button" id="u2-btn-stop">Stop corrupto</button>
+        <button type="button" id="u2-btn-back">Tramas pegadas</button>
+        <button type="button" id="u2-btn-clear">Limpiar</button>
+      </div>
+      <div class="wave">
+        <svg id="u2-svg" class="diagram" viewBox="0 0 640 210" role="img" aria-label="Línea de tiempo de una trama UART 8N1 con inyección de fallos">
+        </svg>
+      </div>
+      <div class="status" id="u2-out" aria-live="polite">—</div>
+    </div>
+
+    <div class="card">
+      <h3>Cómo se verifica</h3>
+      <p>
+        La fase nueva reutiliza la tarea <code>drive_frame(data, bad_stop, idle_clks, glitch)</code> que ya existe en
+        <code>tb/selfcheck_tb.sv</code>. No se reescribe: solo se la llama con parámetros extremos. Con
+        <code>idle_clks=1</code> forzamos al receptor a volver a idle y detectar el siguiente start casi inmediatamente
+        (un solo ciclo de reloj de separación, muy por debajo de los 32 ciclos que se usaban antes). Con
+        <code>glitch=1'b1</code> anteponemos un glitch corto a cada una de esas 30 tramas, de modo que el receptor
+        tiene que rechazar el pulso espurio y aun así enganchar el start real.
+      </p>
+      <pre><code><span class="k">for</span> (<span class="k">int</span> <span class="n">i</span> = <span class="n">0</span>; <span class="n">i</span> &lt; <span class="n">30</span>; <span class="n">i</span>++) <span class="k">begin</span>
+  <span class="k">logic</span> [<span class="n">7</span>:<span class="n">0</span>] <span class="n">d</span>;
+  <span class="n">d</span> = <span class="n">8&#x27;</span>(<span class="s">$urandom</span>);
+  <span class="n">drive_frame</span>(<span class="n">d</span>, <span class="n">1&#x27;b0</span>, <span class="n">1</span>, <span class="n">1&#x27;b1</span>);
+<span class="k">end</span></code><button class="copy" data-copy="for (int i = 0; i &lt; 30; i++) begin
+  logic [7:0] d;
+  d = 8&#x27;($urandom);
+  drive_frame(d, 1&#x27;b0, 1, 1&#x27;b1);
+end">Copiar</button></pre>
+      <p>
+        Este bloque se añadió como una fase adicional al final de <code>tb/selfcheck_tb.sv</code> y <strong>sí se ejecutó
+        en Verilator</strong> junto con el resto del self-check. Sigue siendo el testbench plano en SystemVerilog, no UVM.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Resultado medido</h3>
+      <p>
+        Nueva fase en <code>tb/selfcheck_tb.sv</code>: 30 tramas con separación mínima (<code>idle_clks=1</code>) y glitch
+        antepuesto a cada una, comparadas por el mismo scoreboard que el resto del self-check. <strong>RESULT: PASS</strong>,
+        con 30 glitches adicionales contabilizados.
+      </p>
+      <p class="small muted">
+        Este resultado proviene del testbench plano SystemVerilog ejecutado en Verilator 5.052. El testbench UVM
+        (<code>tb/uart_*.sv</code>) existe en el repositorio pero no se ha ejecutado hasta el final en ningún simulador;
+        no se usa para este resultado.
+      </p>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  "use strict";
+
+  var svg = document.getElementById("u2-svg");
+  var out = document.getElementById("u2-out");
+  var btnGlitch = document.getElementById("u2-btn-glitch");
+  var btnStop = document.getElementById("u2-btn-stop");
+  var btnBack = document.getElementById("u2-btn-back");
+  var btnClear = document.getElementById("u2-btn-clear");
+
+  if (!svg || !out || !btnGlitch || !btnStop || !btnBack || !btnClear) {
+    return;
+  }
+
+  var NS = "http://www.w3.org/2000/svg";
+
+  function mk(tag, attrs) {
+    var el = document.createElementNS(NS, tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (Object.prototype.hasOwnProperty.call(attrs, k)) {
+          el.setAttribute(k, attrs[k]);
+        }
+      }
+    }
+    return el;
+  }
+
+  function clearSvg() {
+    while (svg.firstChild) {
+      svg.removeChild(svg.firstChild);
+    }
+  }
+
+  var reduceMotion = false;
+  try {
+    reduceMotion = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (e) {
+    reduceMotion = false;
+  }
+
+  // Geometría base
+  var X0 = 40;
+  var Y_HI = 60;
+  var Y_LO = 120;
+  var BIT_W = 60;      // ancho de un bit en px
+  var N_BITS = 10;     // start + 8 datos + stop
+  var TRAMA_W = BIT_W * N_BITS;
+
+  function bitX(i) {
+    return X0 + i * BIT_W;
+  }
+
+  function drawBaseline() {
+    // Eje temporal
+    svg.appendChild(mk("line", {
+      x1: 20, y1: 160, x2: 620, y2: 160,
+      stroke: "#888", "stroke-width": 1
+    }));
+
+    // Etiquetas de bits
+    var labels = ["start", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "stop"];
+    for (var i = 0; i < N_BITS; i++) {
+      var t = mk("text", {
+        x: bitX(i) + BIT_W / 2,
+        y: 180,
+        "text-anchor": "middle",
+        "font-size": "10",
+        fill: "#666"
+      });
+      t.textContent = labels[i];
+      svg.appendChild(t);
+    }
+  }
+
+  function drawTrama(offsetX, color, opts) {
+    opts = opts || {};
+    var badStop = !!opts.badStop;
+    var x = X0 + offsetX;
+
+    // Nivel idle (alto) antes del start
+    svg.appendChild(mk("line", {
+      x1: x - 20, y1: Y_HI, x2: x, y2: Y_HI,
+      stroke: color, "stroke-width": 2
+    }));
+
+    // Start (bajo)
+    svg.appendChild(mk("line", {
+      x1: x, y1: Y_HI, x2: x, y2: Y_LO,
+      stroke: color, "stroke-width": 2
+    }));
+    svg.appendChild(mk("line", {
+      x1: x, y1: Y_LO, x2: x + BIT_W, y2: Y_LO,
+      stroke: color, "stroke-width": 2
+    }));
+
+    // 8 bits de datos: patrón alterno para que se vea
+    var pattern = [1, 0, 1, 1, 0, 0, 1, 0];
+    var prevY = Y_LO;
+    for (var i = 0; i < 8; i++) {
+      var bx = x + (i + 1) * BIT_W;
+      var y = pattern[i] ? Y_HI : Y_LO;
+      if (y !== prevY) {
+        svg.appendChild(mk("line", {
+          x1: bx, y1: prevY, x2: bx, y2: y,
+          stroke: color, "stroke-width": 2
+        }));
+      }
+      svg.appendChild(mk("line", {
+        x1: bx, y1: y, x2: bx + BIT_W, y2: y,
+        stroke: color, "stroke-width": 2
+      }));
+      prevY = y;
+    }
+
+    // Stop
+    var sx = x + 9 * BIT_W;
+    var stopY = badStop ? Y_LO : Y_HI;
+    if (stopY !== prevY) {
+      svg.appendChild(mk("line", {
+        x1: sx, y1: prevY, x2: sx, y2: stopY,
+        stroke: color, "stroke-width": 2
+      }));
+    }
+    svg.appendChild(mk("line", {
+      x1: sx, y1: stopY, x2: sx + BIT_W, y2: stopY,
+      stroke: color, "stroke-width": 2
+    }));
+
+    // Vuelta a idle
+    svg.appendChild(mk("line", {
+      x1: sx + BIT_W, y1: stopY, x2: sx + BIT_W + 20, y2: Y_HI,
+      stroke: color, "stroke-width": 2
+    }));
+  }
+
+  function drawGlitch(xPos) {
+    // Pulso bajo corto (glitch) antes del start
+    var w = 8;
+    svg.appendChild(mk("line", {
+      x1: xPos, y1: Y_HI, x2: xPos, y2: Y_LO,
+      stroke: "#c0392b", "stroke-width": 2
+    }));
+    svg.appendChild(mk("line", {
+      x1: xPos, y1: Y_LO, x2: xPos + w, y2: Y_LO,
+      stroke: "#c0392b", "stroke-width": 2
+    }));
+    svg.appendChild(mk("line", {
+      x1: xPos + w, y1: Y_LO, x2: xPos + w, y2: Y_HI,
+      stroke: "#c0392b", "stroke-width": 2
+    }));
+  }
+
+  function drawBadStopHighlight() {
+    var sx = bitX(9);
+    svg.appendChild(mk("rect", {
+      x: sx, y: Y_LO - 4, width: BIT_W, height: (Y_HI - Y_LO) + 8,
+      fill: "rgba(192,57,43,0.18)",
+      stroke: "#c0392b", "stroke-width": 1
+    }));
+  }
+
+  function drawBackToBack() {
+    // Segunda trama pegada: empieza justo al terminar la primera
+    var offset = TRAMA_W;
+    drawTrama(offset, "#c0392b", { badStop: false });
+    // Marca de "sin separación"
+    svg.appendChild(mk("rect", {
+      x: X0 + TRAMA_W - 6, y: Y_HI - 6, width: 12, height: (Y_LO - Y_HI) + 12,
+      fill: "rgba(192,57,43,0.18)",
+      stroke: "#c0392b", "stroke-width": 1
+    }));
+  }
+
+  function render(mode) {
+    clearSvg();
+    drawBaseline();
+
+    if (mode === "glitch") {
+      drawTrama(0, "#2c3e50", {});
+      drawGlitch(X0 - 14);
+      out.textContent = "Glitch corto antes del start: el receptor debe rechazarlo y no arrancar una trama falsa. Si lo acepta, aparecerá un byte espurio.";
+    } else if (mode === "stop") {
+      drawTrama(0, "#2c3e50", { badStop: true });
+      drawBadStopHighlight();
+      out.textContent = "Stop corrupto (bit de stop a 0): el receptor debe marcar rx_frame_err y descartar el byte. El scoreboard debe contabilizar el framing error.";
+    } else if (mode === "back") {
+      drawTrama(0, "#2c3e50", {});
+      drawBackToBack();
+      out.textContent = "Dos tramas sin separación (idle_clks=1): el receptor debe volver a idle y detectar el siguiente start casi inmediatamente, sin perder el segundo byte.";
+    } else {
+      drawTrama(0, "#2c3e50", {});
+      out.textContent = "Trama 8N1 correcta: start + 8 datos + stop, con separación holgada. Sin fallos inyectados.";
+    }
+  }
+
+  function safeRender(mode) {
+    if (reduceMotion) {
+      render(mode);
+    } else {
+      render(mode);
+    }
+  }
+
+  btnGlitch.addEventListener("click", function () { safeRender("glitch"); });
+  btnStop.addEventListener("click", function () { safeRender("stop"); });
+  btnBack.addEventListener("click", function () { safeRender("back"); });
+  btnClear.addEventListener("click", function () { safeRender("none"); });
+
+  safeRender("none");
+})();
+</script>
+
 <!-- 8 EJERCICIOS -->
 <section id="ejercicios" class="reveal">
   <div class="wrap">
@@ -573,6 +912,71 @@ endtask">Copiar</button></pre>
     end">Copiar</button></pre>
       </details>
     </div>
+
+    <p class="small muted" style="margin-top:.8rem">Los ejercicios 7–9 (inyección de errores) proponen llamadas y mutaciones de ejemplo sobre <code>drive_frame</code>: son fragmentos para razonar y resolver, <strong>no se han ejecutado</strong> en ningún simulador. La única fase nueva que sí corrió en Verilator 5.052 es la de la Clase 2 (30 tramas con <code>idle_clks=1</code> y <code>glitch=1'b1</code>).</p>
+
+    <div class="card" style="margin-top:.8rem">
+      <h3>Ejercicio 7 — Inyectar una condición de break con drive_frame</h3>
+      <p class="small">El receptor actual solo entiende start + 8 datos + stop. No tiene lógica de detección de break. Usando la tarea <code>drive_frame(data, bad_stop, idle_clks, glitch)</code> del self-check, escribe una llamada (o secuencia de llamadas) que mantenga <code>rxd</code> a 0 durante más de una trama completa (por ejemplo 12*CLKS_PER_BIT ciclos) sin start/stop válidos, modelando un break. Después razona: ¿qué vería el receptor actual ante esa línea baja tan larga? ¿Un evento de break dedicado o algo distinto? Finalmente, describe (sin implementarlo) qué lógica adicional habría que añadir al RTL para detectar un break real.</p>
+      <details><summary>Pista</summary><p class="small">Recuerda que <code>drive_frame</code> siempre emite un start bit (1 a 0) al principio. Para forzar una línea baja larga sin estructura de trama, puedes encadenar varias llamadas con <code>data=8'h00</code>, <code>bad_stop=1</code> y <code>idle_clks=0</code>, o bien manipular <code>rxd</code> directamente si la tarea lo permite. Piensa en cuántos bits de "0" consecutivos caben en 12*CLKS_PER_BIT ciclos y cuántas tramas falsas puede interpretar el receptor en ese tiempo.</p></details>
+      <details><summary>Solución</summary><p class="small">Una forma de modelarlo es encadenar tramas con datos 0x00 y stop inválido, sin idle entre ellas, hasta cubrir 12*CLKS_PER_BIT ciclos de línea baja. Por ejemplo, tres llamadas seguidas a <code>drive_frame(8'h00, 1, 0, 0)</code> cubren 3*(1+8+1)=30 bits de tiempo, con la mayor parte en 0. El receptor actual, al no tener detección de break, verá cada flanco de bajada como un posible start bit. Como la línea permanece baja, muestreará bits de datos a 0 y, al llegar al bit de stop esperado, encontrará 0 en lugar de 1, generando <code>rx_frame_err</code>. Es decir, verá uno o más <code>rx_frame_err</code> seguidos, no un evento de break dedicado. Para detectar un break real haría falta lógica adicional en el RTL: por ejemplo, un contador que mida la duración de la línea baja tras un start detectado y, si supera un umbral (p. ej. 10-11 tiempos de bit), señalice <code>rx_break</code> en lugar de intentar decodificar datos; además, habría que resetear el receptor y esperar un flanco de subida (idle) para rearmar la detección de start.</p>
+      <pre><code><span class="c">// Modelar break: línea baja prolongada sin stop válido</span>
+<span class="k">drive_frame</span>(<span class="n">8'h00</span>, <span class="n">1'b1</span>, <span class="n">0</span>, <span class="n">0</span>);
+<span class="k">drive_frame</span>(<span class="n">8'h00</span>, <span class="n">1'b1</span>, <span class="n">0</span>, <span class="n">0</span>);
+<span class="k">drive_frame</span>(<span class="n">8'h00</span>, <span class="n">1'b1</span>, <span class="n">0</span>, <span class="n">0</span>);
+<span class="c">// Total ~30 tiempos de bit, la mayor parte en 0</span>
+<span class="c">// El receptor actual generará varios rx_frame_err, no un break dedicado</span></code><button class="copy" data-copy="// Modelar break: línea baja prolongada sin stop válido
+drive_frame(8'h00, 1'b1, 0, 0);
+drive_frame(8'h00, 1'b1, 0, 0);
+drive_frame(8'h00, 1'b1, 0, 0);
+// Total ~30 tiempos de bit, la mayor parte en 0
+// El receptor actual generará varios rx_frame_err, no un break dedicado">Copiar</button></pre>
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:.8rem">
+      <h3>Ejercicio 8 — Experimento de mutación: glitch de media duración de bit</h3>
+      <p class="small">Diseña (sin ejecutar) un experimento de mutación sobre <code>drive_frame</code>: modifica la duración del glitch para que dure <code>CLKS_PER_BIT/2</code> ciclos en lugar de <code>CLKS_PER_BIT/4</code>. Predice si el receptor actual seguiría rechazándolo correctamente o si, a esa duración, el glitch podría confundirse con un start bit real. Razona en términos del umbral de detección de start explicado en la Clase 1 (muestreo a mitad de bit).</p>
+      <details><summary>Pista</summary><p class="small">En la Clase 1 se explicó que el receptor muestrea la línea a mitad del tiempo de bit para decidir si es un start válido. Si el glitch dura menos que ese punto de muestreo, el receptor no lo verá como start. Si dura más, sí. ¿Dónde cae exactamente <code>CLKS_PER_BIT/2</code> respecto a ese punto de muestreo?</p></details>
+      <details><summary>Solución</summary><p class="small">El receptor típicamente detecta el flanco de bajada y luego muestrea a mitad del bit (aproximadamente en <code>CLKS_PER_BIT/2</code> ciclos tras el flanco) para confirmar el start. Con un glitch de <code>CLKS_PER_BIT/4</code>, la línea ya ha vuelto a 1 antes de ese punto de muestreo, así que el receptor no confirma el start y lo rechaza correctamente. Con un glitch de <code>CLKS_PER_BIT/2</code>, el punto de muestreo cae justo en el borde o dentro del glitch: si el glitch dura exactamente <code>CLKS_PER_BIT/2</code> y el muestreo ocurre en ese mismo ciclo, el valor muestreado puede ser 0 (dependiendo de la fase exacta), y el receptor podría aceptar el glitch como un start bit real. A partir de ahí, decodificaría bits de datos basura y probablemente terminaría en <code>rx_frame_err</code> por stop inválido, pero el fallo ya no sería "rechazo limpio del glitch" sino "trama falsa iniciada". Por tanto, la mutación revela que el margen de rechazo del glitch depende de que su duración sea estrictamente menor que el punto de muestreo de start; <code>CLKS_PER_BIT/2</code> está en el límite y es un caso de prueba interesante para verificar el comportamiento del receptor.</p>
+      <pre><code><span class="c">// Mutación: glitch de CLKS_PER_BIT/2 en lugar de CLKS_PER_BIT/4</span>
+<span class="c">// En drive_frame, cambiar:</span>
+<span class="c">//   repeat (CLKS_PER_BIT/4) @(posedge clk);</span>
+<span class="c">// por:</span>
+<span class="c">//   repeat (CLKS_PER_BIT/2) @(posedge clk);</span>
+<span class="c">// Predicción: el muestreo de start a mitad de bit puede caer dentro del glitch</span>
+<span class="c">// y el receptor podría iniciar una trama falsa -> rx_frame_err por stop inválido</span></code><button class="copy" data-copy="// Mutación: glitch de CLKS_PER_BIT/2 en lugar de CLKS_PER_BIT/4
+// En drive_frame, cambiar:
+//   repeat (CLKS_PER_BIT/4) @(posedge clk);
+// por:
+//   repeat (CLKS_PER_BIT/2) @(posedge clk);
+// Predicción: el muestreo de start a mitad de bit puede caer dentro del glitch
+// y el receptor podría iniciar una trama falsa -> rx_frame_err por stop inválido">Copiar</button></pre>
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:.8rem">
+      <h3>Ejercicio 9 — Mínimo de idle_clks entre tramas back-to-back</h3>
+      <p class="small">Calcula cuántos ciclos mínimos de <code>idle_clks</code> hacen falta entre dos tramas para que el receptor termine de procesar el stop bit de la primera antes de que llegue el start de la segunda, sabiendo que el receptor vuelve a esperar start justo tras muestrear el stop. Compara ese mínimo teórico con el valor <code>idle_clks=1</code> usado en la fase de tramas back-to-back con separación mínima del self-check (que sí pasó).</p>
+      <details><summary>Pista</summary><p class="small">Piensa en el ciclo exacto en que el receptor muestrea el stop de la primera trama y en el ciclo en que el emisor empieza a bajar la línea para el start de la segunda. Si el receptor necesita un ciclo para volver al estado IDLE y rearmar la detección de flanco, ¿basta con 1 ciclo de idle? ¿O el propio ciclo de muestreo del stop ya deja al receptor listo?</p></details>
+      <details><summary>Solución</summary><p class="small">El receptor muestrea el stop en el ciclo <code>CLKS_PER_BIT/2</code> tras el inicio del bit de stop. En ese mismo ciclo (o en el siguiente, según la implementación) vuelve al estado IDLE y queda a la espera de un nuevo flanco de bajada. Si el emisor baja la línea para el start de la segunda trama inmediatamente después del stop (idle_clks=0), el flanco de bajada podría coincidir con el ciclo en que el receptor aún está procesando el stop, perdiéndose. Con <code>idle_clks=1</code>, se garantiza al menos un ciclo de línea alta tras el stop antes del nuevo start, dando margen al receptor para rearmarse. El mínimo teórico es, por tanto, 1 ciclo de idle (o 0 si el receptor vuelve a IDLE en el mismo ciclo del muestreo de stop y el emisor espera al menos medio bit antes de bajar). El valor <code>idle_clks=1</code> usado en el self-check es coherente con ese mínimo y explica por qué la fase back-to-back con separación mínima pasó: hay exactamente el margen necesario para que el receptor no pierda el start de la segunda trama.</p>
+      <pre><code><span class="c">// Cálculo del mínimo de idle_clks</span>
+<span class="c">// Receptor: muestrea stop en CLKS_PER_BIT/2 tras inicio del stop</span>
+<span class="c">// Tras muestrear stop -> vuelve a IDLE y espera flanco de bajada</span>
+<span class="c">// Emisor: tras el stop, si idle_clks=0 baja inmediatamente para el start</span>
+<span class="c">// -> riesgo de perder el flanco si el receptor aún no está en IDLE</span>
+<span class="c">// Con idle_clks=1: 1 ciclo de línea alta garantiza rearme</span>
+<span class="c">// Mínimo teórico: 1 ciclo (o 0 si el receptor rearma en el mismo ciclo)</span>
+<span class="c">// idle_clks=1 del self-check cumple el mínimo -> back-to-back pasa</span></code><button class="copy" data-copy="// Cálculo del mínimo de idle_clks
+// Receptor: muestrea stop en CLKS_PER_BIT/2 tras inicio del stop
+// Tras muestrear stop -> vuelve a IDLE y espera flanco de bajada
+// Emisor: tras el stop, si idle_clks=0 baja inmediatamente para el start
+// -> riesgo de perder el flanco si el receptor aún no está en IDLE
+// Con idle_clks=1: 1 ciclo de línea alta garantiza rearme
+// Mínimo teórico: 1 ciclo (o 0 si el receptor rearma en el mismo ciclo)
+// idle_clks=1 del self-check cumple el mínimo -> back-to-back pasa">Copiar</button></pre>
+      </details>
+    </div>
   </div>
 </section>
 
@@ -603,6 +1007,7 @@ endtask">Copiar</button></pre>
     <h2>10. Registro de cambios</h2>
     <div class="card">
       <ul>
+        <li><strong>2026-09-23</strong> — Clase 2 (inyección de errores / fault injection) con laboratorio visual de fallos sobre una trama; ejercicios 7–9; nueva fase en <code>tb/selfcheck_tb.sv</code> reutilizando <code>drive_frame</code> con 30 tramas de separación mínima (<code>idle_clks=1</code>) y glitch antepuesto a cada una: RESULT: PASS. El testbench UVM sigue sin ejecutarse.</li>
         <li><strong>2026-09-19</strong> — Clase 1 (tolerancia de baudrate) con laboratorio interactivo; ejercicios 4–6; <code>drive_frame_skew</code> y bloque de 70 tramas con baudrate desviado en <code>tb/selfcheck_tb.sv</code> (PASS, 366 tramas RX); nuevo <code>tb/baud_sweep_tb.sv</code> + <code>sim/run_baud_sweep.sh</code> (ventana medida −4,5 % … +6,0 %). Un mutante de muestreo tardío que el self-check antiguo no veía ahora da FAIL. El testbench UVM sigue sin ejecutarse.</li>
         <li><strong>2026-09-19</strong> — Versión inicial.</li>
       </ul>

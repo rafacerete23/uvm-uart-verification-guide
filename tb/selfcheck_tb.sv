@@ -349,6 +349,14 @@ module tb_selfcheck;
     end
     repeat (4) @(posedge clk);
 
+    // Clase 2: inyeccion de errores - tramas back-to-back (idle_clks=1) con glitch antepuesto
+    for (int i = 0; i < 30; i++) begin
+      logic [7:0] d;
+      d = 8'($urandom);
+      drive_frame(d, 1'b0, 1, 1'b1);
+    end
+    repeat (4) @(posedge clk);
+
     // Final scoreboard
     check_queues();
 
