@@ -182,6 +182,14 @@ El scoreboard compara, en el camino TX, **los bytes que el host entregó** (por 
 
 ## Registro de cambios
 
+<a id="cambios"></a>
+
+### 2026-09-23 — Clase 2: inyección de errores (fault injection)
+
+- Nueva clase con laboratorio visual de fallos (glitch, stop corrupto, tramas pegadas) y ejercicios 7–9 en `docs/index.html`.
+- `tb/selfcheck_tb.sv`: nueva fase de 30 tramas con separación mínima (`idle_clks=1`) y glitch antepuesto, reutilizando la tarea `drive_frame` existente (RESULT: PASS).
+- El testbench UVM sigue sin ejecutarse en ningún simulador.
+
 ### 2026-09-19 — Curso 0→experto y scripts robustos
 
 - Nuevo `docs/curso.html` (8 niveles + entrevistas, simulador interactivo, quizzes, móvil).
@@ -190,14 +198,6 @@ El scoreboard compara, en el camino TX, **los bytes que el host entregó** (por 
 - Nuevo `sim/run_regression.sh` (autoverificable + tests UVM × semillas).
 - Corrige error de compilación: `uart_tests.sv` asignaba `.num_items` pero las secuencias declaran `n`.
 - Nuevo `tb/uart_sva.sv` (forma de trama TX, rx_valid/rx_frame_err, cover; conectado con `bind`). El hueco del glitch en `uart_rx_driver.sv` ahora cubre el muestreo de mitad de bit, así el glitch se rechaza de verdad.
-
-<a id="cambios"></a>
-
-### 2026-09-23 — Clase 2: inyección de errores (fault injection)
-
-- Nueva clase con laboratorio visual de fallos (glitch, stop corrupto, tramas pegadas) y ejercicios 7–9 en `docs/index.html`.
-- `tb/selfcheck_tb.sv`: nueva fase de 30 tramas con separación mínima (`idle_clks=1`) y glitch antepuesto, reutilizando la tarea `drive_frame` existente (RESULT: PASS).
-- El testbench UVM sigue sin ejecutarse en ningún simulador.
 
 ### 2026-09-19 — Clase 1: tolerancia de baudrate
 
